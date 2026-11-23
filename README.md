@@ -1,1 +1,92 @@
-# Production-RAG-Service__Portfolio-01
+# Production RAG Service
+
+Upload documents (PDF, DOCX) and ask questions that are answered **only from those documents**, with numbered citations, a chunks panel (count + similarity scores) and explicit refusals when the answer is not in the documents.
+
+FastAPI · OpenAI (`gpt-6-luna` answers, `text-embedding-3-small` embeddings, `gpt-6.1-terra` as evaluation judge) · Pinecone (one namespace per user) · SQLite (document registry, users) · `langchain-text-splitters` for chunking. Everything else is plain Python.
+
+> **Status:** MVP implemented and covered by an offline test suite. Real-service numbers (evaluation results, screenshots, demo video link) are added after running with API keys; none are claimed here until measured. The full design lives in [PLAN.md](PLAN.md); the layer-by-layer picture is [architecture.html](architecture.html).
+
+Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-01> · demo video: _to be added_ · deployed URL: _optional (B8), to be added_
+
+## Features
+
+- Upload PDF/DOCX (TXT, MD, PPTX can be enabled with `ALLOWED_FILE_TYPES`), list, delete; duplicate detection per user (409).
+- Ask questions: answer with `[n]` citations linked to the retrieved chunks, `num_retrieved`, per-chunk similarity score; refusals are HTTP 200 with `refused=true` and a `reason`.
+- Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.
+- One error shape for every failure, `X-Request-ID` on every response, JSON logs with secret redaction, in-memory rate limit (429), bounded retries/timeouts/concurrency for every OpenAI call (upstream failure → 503).
+- Optional JWT auth (`AUTH_ENABLED=true`): Argon2id passwords, HS256 tokens, per-user isolation. With auth off the app uses one default owner.
+- Responsive plain HTML/CSS/JS frontend (phone → desktop), all text rendered via `textContent`.
+
+## Setup (Windows PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env      # then fill in OPENAI_API_KEY and PINECONE_API_KEY
+```
+
+`.env` is git-ignored. The Pinecone index (`PINECONE_INDEX`, cosine, `EMBEDDING_DIM`=1536) is created automatically on startup if it does not exist.
+
+### Run
+
+```powershell
+uvicorn app.main:app            # http://127.0.0.1:8000  (UI)   /docs  (Swagger)
+```
+
+Use a **single worker** (the rate limiter, locks and SQLite registry assume one process).
+
+### Test (fully offline: in-memory vector store, fake embedder, mocked LLM)
+
+```powershell
+pytest -q                                   # whole suite
+pytest tests/test_api.py::test_upload_list_ask_delete_reask   # a single test
+python scripts/run_guardrail_cases.py --mocked   # guardrail proof table (server must be running; --mocked adds output cases)
+```
+
+### Evaluate (needs API keys and the corpus + golden set, see [evals/README_GOLDEN.md](evals/README_GOLDEN.md))
+
+```powershell
+python -m evals.run_eval --config all
+```
+
+Re-ingests the corpus per chunking config (A 1000/200, B 500/100) into isolated Pinecone namespaces and a separate SQLite file, measures hit@k / recall@k / MRR, faithfulness, correctness, unanswerable handling, latency and tokens, tunes the similarity threshold on the dev split, reports the test split and picks the winner by the fixed rule. Outputs are cached in `evals/results/cache/`; results land in `evals/results/`.
+
+### Notebooks
+
+`notebooks/01_extract … 05_answer` show each step. They use the real services when keys are present and otherwise run on offline test doubles with a clear banner. Regenerate with `python scripts/make_notebooks.py`.
+
+## API summary
+
+| Method + path | Purpose | Main codes |
+|---|---|---|
+| `POST /documents` (multipart `file`) | upload + ingest | 201 · 400 · 409 · 413 · 415 · 422 · 429 · 503 |
+| `GET /documents` | list own documents | 200 |
+| `DELETE /documents/{doc_id}` | delete document and its vectors | 204 · 404 · 503 |
+| `POST /ask` | answer a question (refusals are 200) | 200 · 404 · 422 · 429 · 503 |
+| `GET /health` | liveness + dependencies, `auth_enabled` | 200 · 503 |
+| `POST /auth/signup`, `POST /auth/login` | B1 only (`AUTH_ENABLED=true`) | 201/200 · 401 · 403 · 409 · 422 · 429 |
+
+Errors: `{"error": {"code", "message", "request_id", "details"?}}`. Full contract: [PLAN.md §7](PLAN.md).
+
+## Configuration
+
+All settings are environment variables read in `app/config.py` (names in `.env.example`; full table in [PLAN.md §6](PLAN.md)). Highlights: `SIMILARITY_THRESHOLD`, `TOP_K`, `CHUNK_SIZE`/`CHUNK_OVERLAP`, `MAX_UPLOAD_MB`, `RATE_LIMIT_PER_MIN`, `LLM_MAX_CONCURRENCY`, `MAX_RETRIES`, `AUTH_ENABLED`, `DEMO_FAULT` (demo only: `llm_timeout`, `llm_429`, `pinecone_down`).
+
+## Project layout
+
+```
+app/            main.py (routes only) · config · schemas · errors · db · auth · guardrails · retrieval · generation
+                openai_client (the only OpenAI caller) · ratelimit · container · ingestion/ · static/
+evals/          golden set, metrics, judge, cache, run_eval, guardrail cases
+tests/          pytest suite (offline)         notebooks/  step-by-step notebooks
+scripts/        guardrail runner, notebook builder          corpus/  evaluation/demo documents (owner supplies)
+```
+
+## Git workflow
+
+`main` is the stable branch; work is done on feature branches (`feature/ingestion`, `feature/ask-endpoint`, `feature/guardrails`, `feature/evals`, `feature/frontend`, plus one per optional feature) and merged when complete. `.env` is never committed.
+
+## Known limitations
+
+Prompt-injection/jailbreak checks are English pattern matching only; off-topic detection is a similarity threshold; the citation check proves a citation exists, not that it supports the claim (faithfulness in the evaluation measures that); document text and questions are sent to OpenAI and stored chunks live in Pinecone. See [PLAN.md](PLAN.md) §10 and §20.

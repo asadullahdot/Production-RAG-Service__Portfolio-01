@@ -139,6 +139,7 @@ Portfolio_01/
 │   ├── auth.py              # B1: signup/login/JWT dependency (returns DEFAULT_OWNER_ID when AUTH_ENABLED=false)
 │   ├── openai_client.py     # the ONLY module that calls OpenAI: semaphores, timeouts, retries, usage/cost logging
 │   ├── ratelimit.py         # in-memory sliding-window limiter (client-facing 429)
+│   ├── container.py         # wires settings, db, store, openai client and services (tests inject fakes here)
 │   ├── guardrails.py        # upload / input / output / document checks
 │   ├── retrieval.py
 │   ├── generation.py
@@ -154,7 +155,7 @@ Portfolio_01/
 │   ├── golden_set.json  guardrail_cases.json
 │   ├── metrics.py  judge.py  run_eval.py   # python -m evals.run_eval --config all
 │   └── results/             # saved JSON + cache/
-├── scripts/                 # run_guardrail_cases.py, concurrent_upload_demo.py, secret_scan (small helpers, used in the demo)
+├── scripts/                 # run_guardrail_cases.py, make_notebooks.py (+ concurrent_upload_demo.py, secret_scan still to write)
 ├── tests/                   # pytest
 ├── notebooks/               # 01_extract … 05_answer, executed, outputs saved
 ├── corpus/                  # [OWNER] small evaluation/demo corpus + golden-set source documents (NOT a product limit); fixtures/ for edge cases

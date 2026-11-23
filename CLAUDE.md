@@ -2,15 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current state: plan only, no code
+## Current state
 
-This is a course portfolio project (Agentic AI, Portfolio 01 "Production RAG Service", deadline 25 Nov 2026). The repo currently holds **documents only**: there is no source code, no build, no linter and no tests yet. **Do not write code, scaffolds or stubs until the owner explicitly says so** (an earlier scaffold was deleted at the owner's request).
+The MVP backend, plain frontend, offline test suite and evaluation harness are implemented. Still missing, because they need the owner's API keys or material: real-service smoke test (PLAN.md §19 Step 0), the evaluation corpus in `corpus/`, `evals/golden_set.json` (see `evals/README_GOLDEN.md`), real eval numbers, Swagger screenshots, the executed-with-real-keys notebooks, and the final `DESIGN.md` / `EVAL.md` / `AI_USAGE.md` (written from PLAN.md §17 with measured numbers only). Optional features B4 (React), B8 (deploy) and B5 (extra types are implemented but disabled by default via `ALLOWED_FILE_TYPES`) are not finished.
 
-- `PLAN.md` is the single master plan and **the source of truth**: decisions, API contract, pipelines, config variables, guardrails, evaluation rules, schedule. When another file disagrees with it, PLAN.md wins. Edit it in place; do not create additional plan documents.
-- `architecture.html` is a layer-by-layer visual of PLAN.md (Ask / Upload / Delete tabs). Update it whenever PLAN.md's flows, status codes or layers change.
-- `_requirements/` holds the instructor's brief (PDF) and grading rubric (xlsx). Read-only source of truth for what is graded (M1–M15 mandatory, B1–B8 optional).
-- `_archive/` is obsolete (old Gemini/Chroma/`/query` designs). Do not copy from it; it exists only for reference.
-- The final deliverables (`DESIGN.md`, `EVAL.md`, `README.md`, `AI_USAGE.md`) are to be written at the end from PLAN.md §17, with real measured numbers only.
+- `PLAN.md` is the source of truth for decisions, API contract, pipelines, config variables, guardrails and evaluation rules. When code and plan disagree, fix one of them deliberately and update the other; do not create additional plan documents. Known deviations from the plan's §5 layout: `app/container.py` (wiring), `scripts/`, `notebooks/nb_support.py`.
+- `architecture.html` is a layer-by-layer visual of PLAN.md; update it when flows, status codes or layers change.
+- `_requirements/` holds the instructor's brief (PDF) and grading rubric (xlsx): read-only. `_archive/` is obsolete (old Gemini/Chroma designs) and intentionally not committed.
+- Model IDs and vendor limits are tagged **[VERIFY]** in PLAN.md and have never been run against the real OpenAI/Pinecone APIs from this repo (no keys during the build). Treat `app/openai_client.py` (Responses API call shape) and `PineconeStore` in `app/ingestion/store.py` (SDK v10 calls) as untested against the live services until the smoke test passes. Never invent numbers; every result in a document must come from a real run.
 
 ## Git and attribution (owner's rule, from `_requirements/CLAUDE.md`)
 
@@ -35,11 +34,14 @@ FastAPI service, async, **single uvicorn worker** (in-memory rate limiter, locks
 - **Prompt contract:** context is data, not instructions; exact `NOT_IN_DOCUMENTS` token becomes a fixed English refusal; citations are `[n]` into the retrieved chunks. Citation validation proves a citation exists, not that it supports the claim; faithfulness in the eval measures that.
 - **Evaluation (`evals/`):** own hit@k / recall@k / MRR using evidence-span labels (no chunk ids, so two chunking configs A 1000/200 and B 500/100 are comparable), own LLM-as-judge with a different, larger model than the generator, hand-labelled judge reliability, a fixed winner rule, disk cache keyed on model/prompt/config/input. One command reproduces everything (`python -m evals.run_eval --config all`).
 
-## Planned commands (do not exist yet; Windows PowerShell with a venv)
+## Commands (Windows; venv at `.venv`, Python 3.14)
 
-- Run service: `uvicorn app.main:app`
-- Tests: `pytest` (single test: `pytest tests/test_x.py::test_name`); tests run offline with an in-memory vector store, a bag-of-words fake embedder and a mocked LLM
-- Evaluation: `python -m evals.run_eval --config all` (optional `--deepeval`)
+- Setup: `python -m venv .venv`, `.venv\Scriptsctivate`, `pip install -r requirements.txt` (notebook builder additionally needs `nbformat nbclient ipykernel`)
+- Run: `uvicorn app.main:app` (single worker; UI at `/`, Swagger at `/docs`; starts without API keys, `/health` then reports `pinecone: false`)
+- Tests (offline, ~10 s): `pytest -q`; single test: `pytest tests/test_api.py::test_upload_list_ask_delete_reask -q`
+- Guardrail proof table: `python scripts/run_guardrail_cases.py --mocked` (needs a running server for the HTTP part)
+- Evaluation: `python -m evals.run_eval --config all` (needs keys, `corpus/`, `evals/golden_set.json`)
+- Notebooks: `python scripts/make_notebooks.py` (executes them; real services if keys exist, otherwise labelled offline mode)
 
 ## Working notes
 
