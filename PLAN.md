@@ -314,7 +314,7 @@ Every request: `X-Request-ID`, method, path, status, latency, error code, user i
 - *Unanswerable handling:* % of unanswerable questions correctly refused (detect by `NOT_IN_DOCUMENTS`/`refused` first; judge only for partial or fabricated answers). Also report **over-refusal rate** on answerable questions.
 - Also: latency p50/p95 (indicative only at ~30 queries) and tokens/cost per question.
 
-**Threshold objective (fixed now):** per config, on dev, choose the `SIMILARITY_THRESHOLD` that maximises balanced accuracy = (unanswerable correctly refused + answerable kept) ÷ 2; ties → the lower threshold. Report the dev curve in EVAL.md.
+**Threshold objective (fixed now):** per config, on dev, choose the `SIMILARITY_THRESHOLD` that maximises balanced accuracy = (unanswerable correctly refused + answerable kept) ÷ 2; ties → the lower threshold. Candidate thresholds are the midpoints between adjacent observed dev scores (plus 0), so the choice sits between the answerable and unanswerable groups rather than on one dev example. Report the dev curve in EVAL.md.
 
 **Judge reliability:** hand-label **25–30** items drawn as a **stratified random sample** (answerable vs unanswerable, refused vs answered, judge-pass vs judge-fail) — not only the judge-flagged failures, so agreement isn't biased; report confusion matrix, agreement % and Cohen's kappa with a (Wilson) confidence interval; target agreement ≥ 80 % (if lower, move the judge to `gpt-6.2-sol` or fix the prompt, and say so); judge model ≠ generator, lowest-variance settings the model allows (temperature 0 only if accepted, otherwise fixed reasoning effort) and cached outputs; tune the judge prompt on dev items, report on held-out ones.
 
