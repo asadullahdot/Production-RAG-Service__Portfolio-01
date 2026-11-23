@@ -36,7 +36,7 @@ FastAPI service, async, **single uvicorn worker** (in-memory rate limiter, locks
 
 ## Commands (Windows; venv at `.venv`, Python 3.14)
 
-- Setup: `python -m venv .venv`, `.venv\Scriptsctivate`, `pip install -r requirements.txt` (notebook builder additionally needs `nbformat nbclient ipykernel`)
+- Setup: `python -m venv .venv`, `.venv/Scripts/activate`, `pip install -r requirements.txt` (notebook builder additionally needs `nbformat nbclient ipykernel`)
 - Run: `uvicorn app.main:app` (single worker; UI at `/`, Swagger at `/docs`; starts without API keys, `/health` then reports `pinecone: false`)
 - Tests (offline, ~10 s): `pytest -q`; single test: `pytest tests/test_api.py::test_upload_list_ask_delete_reask -q`
 - Guardrail proof table: `python scripts/run_guardrail_cases.py --mocked` (needs a running server for the HTTP part)
