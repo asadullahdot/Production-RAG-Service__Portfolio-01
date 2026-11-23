@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Layer Flow</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1c2430;--mut:#5b6678;--line:#c9d1dc;
+    --l1:#e3f0ff;--l2:#e6f7ec;--l3:#fff3d9;--l4:#f1e8ff;--l5:#ffe6e6;--l6:#e9ecef;--acc:#2f6fd6;}
+  @media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b222b;--ink:#e6eaf0;--mut:#9aa6b8;--line:#3a4655;
+    --l1:#1c2f4a;--l2:#1b3a28;--l3:#4a3b17;--l4:#35254f;--l5:#4a2323;--l6:#2a313b;--acc:#7aa7f5;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,Segoe UI,sans-serif;padding:24px 16px}
+  main{max-width:1000px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 4px} h2{font-size:18px;margin:32px 0 12px}
+  p.sub{color:var(--mut);margin:0 0 20px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .tabs button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit}
+  .tabs button[aria-pressed=true]{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .layer{border:1px solid var(--line);border-radius:12px;padding:14px;margin:0}
+  .layer>h3{margin:0 0 4px;font-size:15px} .layer>small{color:var(--mut);display:block;margin-bottom:10px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .box{flex:1 1 200px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0}
+  .box b{display:block;margin-bottom:2px} .box span{color:var(--mut);font-size:13px}
+  .l1{background:var(--l1)}.l2{background:var(--l2)}.l3{background:var(--l3)}.l4{background:var(--l4)}.l5{background:var(--l5)}.l6{background:var(--l6)}
+  .arrow{text-align:center;color:var(--acc);font-size:13px;padding:6px 0;font-weight:600}
+  .arrow::before{content:"▼ ";}
+  .flow{display:none}.flow.on{display:block}
+  .err{color:#c0392b;font-weight:600}
+  .opt{color:var(--acc);font-weight:600;font-size:12px}
+  table{border-collapse:collapse;width:100%;background:var(--card)} th,td{border:1px solid var(--line);padding:8px;text-align:left;font-size:14px;vertical-align:top}
+  th{background:var(--l6)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Production RAG Service — Layer-by-Layer Flow</h1>
+  <p class="sub">FastAPI · OpenAI (gpt-6-luna answers, text-embedding-3-small) · Pinecone · SQLite · pypdf / python-docx (+ B5 types). Mirrors PLAN.md, which is the source of truth. <span class="opt">B#</span> = optional bonus feature (JWT auth is B1; with <code>AUTH_ENABLED=false</code> the same flow runs with a fixed default owner and no token).</p>
+
+  <div class="tabs" role="group" aria-label="Flow">
+    <button aria-pressed="true" data-f="ask">Ask a question</button>
+    <button aria-pressed="false" data-f="upload">Upload a document</button>
+    <button aria-pressed="false" data-f="delete">Delete a document</button>
+  </div>
+
+  <!-- ASK -->
+  <section class="flow on" id="ask">
+    <div class="layer l1"><h3>1 · Frontend (responsive HTML/CSS/JS)</h3><small>app/static · login only if /health says auth_enabled <span class="opt">B1</span> · React build <span class="opt">B4</span> · all text rendered with textContent (no HTML injection)</small>
+      <div class="row"><div class="box"><b>Question box</b><span>POST /ask {question, top_k?, doc_ids?}</span></div>
+      <div class="box"><b>Answer + citations</b><span>[n] markers linked to chunks</span></div>
+      <div class="box"><b>Chunks panel</b><span>chunk text, count, similarity score (collapsible)</span></div></div></div>
+    <div class="arrow">HTTP JSON (+ Bearer token when B1)</div>
+    <div class="layer l2"><h3>2 · API layer</h3><small>app/main.py (routes only) · app/ratelimit.py</small>
+      <div class="row"><div class="box"><b>Middleware order</b><span>request id → rate limit (<span class="err">429</span>, keyed by user id or client IP) → JWT check (<span class="err">401</span>, B1)</span></div>
+      <div class="box"><b>Schema validation</b><span>schemas.py Pydantic → <span class="err">422</span>; unknown/foreign doc_ids → <span class="err">404</span></span></div>
+      <div class="box"><b>Error mapper</b><span>one error shape; <span class="err">503</span> on dependency down / deadline exceeded; no tracebacks to clients</span></div></div></div>
+    <div class="arrow">calls service</div>
+    <div class="layer l3"><h3>3 · Input guardrails</h3><small>app/guardrails.py</small>
+      <div class="row"><div class="box"><b>Length / empty</b><span>reject → <span class="err">422</span></span></div>
+      <div class="box"><b>Injection / jailbreak</b><span>pattern/heuristic check (English only) → 200 refused + reason</span></div>
+      <div class="box"><b>No documents yet</b><span>registry empty → 200 refused: no_documents</span></div></div></div>
+    <div class="arrow">clean question</div>
+    <div class="layer l4"><h3>4 · Retrieval</h3><small>app/retrieval.py</small>
+      <div class="row"><div class="box"><b>Embed query</b><span>via openai_client.py (timeout, retry, concurrency cap)</span></div>
+      <div class="box"><b>Vector search</b><span>Pinecone, user namespace, cosine similarity, top-k</span></div>
+      <div class="box"><b>Registry filter</b><span>drop hits whose doc_id is not in the owner's registry (no stale vectors)</span></div>
+      <div class="box"><b>Threshold (= off-topic check)</b><span>no chunk ≥ similarity threshold → refusal <i>no_relevant_context</i>, LLM not called</span></div></div></div>
+    <div class="arrow">chunks + scores</div>
+    <div class="layer l4"><h3>5 · Generation</h3><small>app/generation.py</small>
+      <div class="row"><div class="box"><b>Prompt builder</b><span>numbered chunks in &lt;context&gt;; docs = data, not instructions; canary string; escaped file names</span></div>
+      <div class="box"><b>LLM call</b><span>gpt-6-luna (Responses API), async, timeout + bounded retry, max_retries=0 in SDK</span></div>
+      <div class="box"><b>Parse</b><span>[n] / [1,2] / [1-3] citations; exact NOT_IN_DOCUMENTS → English refusal text</span></div></div></div>
+    <div class="arrow">answer</div>
+    <div class="layer l3"><h3>6 · Output guardrails</h3><small>app/guardrails.py</small>
+      <div class="row"><div class="box"><b>No invented citations</b><span>cited ids ⊆ retrieved ids; strip/flag others</span></div>
+      <div class="box"><b>No leaks</b><span>canary + n-gram prompt-leak check, API-key regex → reason <i>output_blocked</i></span></div>
+      <div class="box"><b>Refusal</b><span>not_in_documents → fixed English text</span></div></div></div>
+    <div class="arrow">200 {answer, citations, retrieved_chunks[], num_retrieved, refused, reason, request_id, latency_ms, usage}</div>
+    <div class="layer l1"><h3>Back to UI</h3><small>renders answer, citations and chunks panel; refusal shows its reason</small></div>
+  </section>
+
+  <!-- UPLOAD -->
+  <section class="flow" id="upload">
+    <div class="layer l1"><h3>1 · Frontend</h3><small>file picker (PDF/DOCX; TXT/MD/PPTX with <span class="opt">B5</span>) → POST /documents (multipart)</small></div>
+    <div class="arrow">multipart upload</div>
+    <div class="layer l2"><h3>2 · API layer</h3><small>main.py: request id, rate limit <span class="err">429</span>, JWT <span class="err">401</span> (B1), streaming size cap → <span class="err">413</span></small></div>
+    <div class="arrow">bytes + filename</div>
+    <div class="layer l3"><h3>3 · Upload guardrails</h3><small>guardrails.py</small>
+      <div class="row"><div class="box"><b>Type check</b><span>extension + MIME + magic bytes → <span class="err">415</span></span></div>
+      <div class="box"><b>Empty / corrupt / encrypted</b><span><span class="err">400</span></span></div>
+      <div class="box"><b>Zip-bomb check</b><span>DOCX/PPTX archive size &amp; ratio → <span class="err">400</span></span></div>
+      <div class="box"><b>Document guardrails <span class="opt">B6</span></b><span>malicious → <span class="err">400</span>; hidden instructions flagged, kept as data</span></div></div></div>
+    <div class="arrow">valid file</div>
+    <div class="layer l4"><h3>4 · Ingestion pipeline</h3><small>app/ingestion/service.py (per owner+hash lock)</small>
+      <div class="row">
+      <div class="box"><b>Hash + dedup</b><span>SHA-256; (owner, hash) already in registry → <span class="err">409</span></span></div>
+      <div class="box"><b>Extract</b><span>per page / section / slide; no text → <span class="err">400</span>; pages &gt; cap → <span class="err">413</span></span></div>
+      <div class="box"><b>Chunk</b><span>RecursiveCharacterTextSplitter, per page; chunks &gt; cap → <span class="err">413</span></span></div>
+      <div class="box"><b>Embed</b><span>batched, concurrent under a semaphore, via openai_client.py</span></div></div></div>
+    <div class="arrow">vectors + metadata</div>
+    <div class="layer l5"><h3>5 · Storage</h3><small>Pinecone (vectors + chunk text, namespace per user) · SQLite (documents registry; users with B1)</small>
+      <div class="row"><div class="box"><b>1. Upsert</b><span>id {doc_id}:{chunk_idx}; metadata doc_id, owner_id, file_name, page, chunk_idx, text…</span></div>
+      <div class="box"><b>2. Wait for visibility</b><span>poll fetch of the last id (eventual consistency)</span></div>
+      <div class="box"><b>3. Registry row (last)</b><span>a document exists only once its vectors are stored</span></div>
+      <div class="box"><b>On failure</b><span>delete computed chunk ids → <span class="err">503</span></span></div></div></div>
+    <div class="arrow">201 {doc_id, file_name, num_chunks, num_pages, …}</div>
+    <div class="layer l1"><h3>Back to UI</h3><small>document list refreshes</small></div>
+  </section>
+
+  <!-- DELETE -->
+  <section class="flow" id="delete">
+    <div class="layer l1"><h3>1 · Frontend</h3><small>delete button → DELETE /documents/{id}</small></div>
+    <div class="arrow">HTTP</div>
+    <div class="layer l2"><h3>2 · API layer</h3><small>rate limit / JWT as above · id not in the caller's registry → <span class="err">404</span></small></div>
+    <div class="arrow">doc_id</div>
+    <div class="layer l4"><h3>3 · Ingestion / store service</h3><small>read num_chunks from the registry → delete vector ids {doc_id}:0…n-1 from the user's namespace (batched) → then remove the registry row. Vector delete fails → <span class="err">503</span>, registry row kept so it can be retried</small></div>
+    <div class="arrow">204 No Content</div>
+    <div class="layer l1"><h3>Verify</h3><small>re-ask: deleted content must never appear (also guaranteed by the registry filter in retrieval)</small></div>
+  </section>
+
+  <h2>Cross-cutting layers</h2>
+  <div class="layer l6"><div class="row">
+    <div class="box"><b>config.py</b><span>all settings; secrets from env only; AUTH_ENABLED switch</span></div>
+    <div class="box"><b>openai_client.py</b><span>the only OpenAI caller: semaphores, timeouts, retries, Retry-After, request deadline</span></div>
+    <div class="box"><b>Logging</b><span>request id, latency, errors, tokens; never secrets or tracebacks to clients</span></div>
+    <div class="box"><b>evals/</b><span>golden set → run_eval (own eval owners + eval.db) → results → EVAL.md</span></div>
+    <div class="box"><b>tests/ + notebooks/</b><span>step-by-step notebooks, then pytest API tests (in-memory vector store, fake embedder, mocked LLM)</span></div>
+  </div></div>
+
+  <h2>Status codes by layer</h2>
+  <table>
+    <tr><th>Layer</th><th>Codes</th></tr>
+    <tr><td>API / validation</td><td>422 invalid data · 429 rate limit · 401 missing/invalid token (B1) · 403 signup closed (B1)</td></tr>
+    <tr><td>Upload guardrails / ingestion</td><td>400 empty, corrupt, encrypted, no text, malicious · 409 duplicate · 413 too large / too many pages or chunks · 415 unsupported type · 201 created</td></tr>
+    <tr><td>Documents / ask</td><td>200 list / answer (refusals are 200 with <i>refused</i> + <i>reason</i>) · 204 deleted · 404 unknown document id</td></tr>
+    <tr><td>External dependencies</td><td>503 LLM, embedding API or vector DB down / timing out / quota exhausted / deadline exceeded</td></tr>
+  </table>
+</main>
+<script>
+  const btns=document.querySelectorAll('.tabs button');
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    btns.forEach(x=>x.setAttribute('aria-pressed',x===b));
+    document.querySelectorAll('.flow').forEach(f=>f.classList.toggle('on',f.id===b.dataset.f));
+  }));
+</script>
+</body>
+</html>

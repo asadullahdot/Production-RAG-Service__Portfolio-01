@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document Q&amp;A</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>Document Q&amp;A</h1>
+  <div id="session" hidden><span id="whoami"></span> <button id="logout" type="button">Log out</button></div>
+</header>
+
+<main>
+  <section id="auth" hidden aria-labelledby="auth-title">
+    <h2 id="auth-title">Sign in</h2>
+    <form id="auth-form">
+      <label>Email <input id="email" type="email" autocomplete="username" required></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password" minlength="8" maxlength="128" required></label>
+      <div class="row">
+        <button type="submit" id="login-btn">Log in</button>
+        <button type="button" id="signup-btn" class="secondary">Sign up</button>
+      </div>
+    </form>
+  </section>
+
+  <div id="app" class="columns" hidden>
+    <section id="docs-col" aria-labelledby="docs-title">
+      <h2 id="docs-title">Documents</h2>
+      <form id="upload-form">
+        <label>Upload a document <input id="file" type="file" required></label>
+        <button type="submit" id="upload-btn">Upload</button>
+      </form>
+      <p id="upload-status" role="status"></p>
+      <ul id="doc-list"></ul>
+      <p id="doc-empty" class="muted">No documents yet. Upload one to get started.</p>
+    </section>
+
+    <section id="ask-col" aria-labelledby="ask-title">
+      <h2 id="ask-title">Ask a question</h2>
+      <form id="ask-form">
+        <label>Your question <textarea id="question" rows="3" maxlength="1000" required></textarea></label>
+        <button type="submit" id="ask-btn">Ask</button>
+      </form>
+      <p id="ask-status" role="status"></p>
+      <article id="result" hidden>
+        <p id="refusal" class="refusal" hidden></p>
+        <p id="answer"></p>
+        <p id="meta" class="muted"></p>
+        <details id="chunks-panel" open>
+          <summary id="chunks-summary"></summary>
+          <ol id="chunks"></ol>
+        </details>
+      </article>
+    </section>
+  </div>
+  <p id="error" class="error" role="alert" hidden></p>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
