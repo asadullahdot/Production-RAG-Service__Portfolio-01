@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     top_k: int = 5
     top_k_max: int = 20
-    similarity_threshold: float = 0.30
+    similarity_threshold: float = 0.15  # provisional (24 Nov 2026, see PLAN.md §12); the eval tunes it per config on dev
 
     # ingestion limits
     max_upload_mb: int = 10
