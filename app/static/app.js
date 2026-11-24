@@ -19,7 +19,7 @@
     let res;
     try { res = await fetch(path, Object.assign({}, opts, { headers })); }
     catch (_) { throw new Error("Cannot reach the server. Check your connection."); }
-    if (res.status === 401 && state.authEnabled) { saveSession(null, ""); render(); }
+    if (res.status === 401) { state.authEnabled = true; saveSession(null, ""); render(); }
     if (res.status === 204) return null;
     let body = null;
     try { body = await res.json(); } catch (_) {}

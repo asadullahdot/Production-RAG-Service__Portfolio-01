@@ -21,6 +21,7 @@ from app.container import Container, build_container
 from app.errors import AppError, RateLimited, UpstreamUnavailable
 from app.logging_setup import log_event, new_request_id, request_id_var, setup_logging
 from app.llm_guard import deadline_var
+from app.ratelimit import rate_key
 from app.upload_limit import UploadSizeLimit
 from app.schemas import (AskRequest, AskResponse, DocumentList, DocumentOut, ErrorResponse, HealthOut,
                          SignupRequest, TokenOut, UserOut)
@@ -53,7 +54,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def lifespan(app: FastAPI):
         auth.validate_auth_config(settings)
         app.state.container = container or build_container(settings)
-        app.state.vector_db_checked = (0.0, False)
         try:
             await asyncio.wait_for(app.state.container.store.ensure_collection(),
                                    timeout=settings.qdrant_timeout_s)  # never hold startup longer than one timeout
@@ -77,7 +77,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     )
     # An injected container (tests) is usable without running the lifespan.
     app.state.container = container
-    app.state.vector_db_checked = (0.0, False)
 
     # ------------------------------------------------------------------ middleware
     app.add_middleware(UploadSizeLimit, max_bytes=settings.max_upload_bytes, max_mb=settings.max_upload_mb)  # inner: runs after request_context
@@ -95,7 +94,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             c: Container = request.app.state.container
             response = None
             if key in RATE_LIMITED_ROUTES:
-                allowed, retry_after = c.limiter.check(_rate_key(request, settings))
+                allowed, retry_after = c.limiter.check(rate_key(request, settings))
                 if not allowed:
                     response = _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
                                       headers={"Retry-After": str(retry_after)})
@@ -195,10 +194,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def health(request: Request):
         c: Container = request.app.state.container
         sqlite_ok = c.db.ping()
-        checked_at, vector_db_ok = request.app.state.vector_db_checked
-        if time.monotonic() - checked_at > (60 if vector_db_ok else 5):  # successes cached 60 s so probes don't hit the vector DB; failures only 5 s
-            vector_db_ok = await c.store.ping()
-            request.app.state.vector_db_checked = (time.monotonic(), vector_db_ok)
+        vector_db_ok = await c.store.healthy()  # cached inside the store so probes don't hammer the vector DB
         ok = sqlite_ok and vector_db_ok
         body = HealthOut(status="ok" if ok else "degraded", sqlite=sqlite_ok, qdrant=vector_db_ok,
                          auth_enabled=c.settings.auth_enabled)
@@ -211,23 +207,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
-
-
-def _rate_key(request: Request, settings: Settings) -> str:
-    """User id when a valid token is present (no DB hit), otherwise the client IP (always IP for /auth/*)."""
-    if settings.auth_enabled and not request.url.path.startswith("/auth/"):
-        header = request.headers.get("authorization", "")
-        if header.lower().startswith("bearer "):
-            user_id = auth.decode_token(header[7:], settings)
-            if user_id:
-                return f"user:{user_id}"
-    ip = request.client.host if request.client else "unknown"
-    if settings.behind_proxy:
-        # Proxies append the real peer on the right; the left side is whatever the client sent (spoofable).
-        parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
-        if len(parts) >= settings.trusted_proxies:
-            ip = parts[-settings.trusted_proxies]
-    return f"ip:{ip}"
 
 
 app = create_app()

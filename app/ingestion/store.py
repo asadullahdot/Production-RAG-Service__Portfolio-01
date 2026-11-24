@@ -60,6 +60,7 @@ class VectorStore(Protocol):
     async def delete_owner(self, owner: str) -> None: ...
     async def count(self, owner: str) -> int: ...
     async def ping(self) -> bool: ...
+    async def healthy(self) -> bool: ...
 
 
 def _owner_filter(owner: str, doc_ids: list[str] | None = None, doc_id: str | None = None) -> models.Filter:
@@ -80,6 +81,7 @@ class QdrantStore:
         self._client = client
         self._sleep = sleep
         self.collection = collection or settings.qdrant_collection
+        self._health = (0.0, False)  # (checked at, result) for healthy()
         self._ready = False  # set once ensure_collection() has succeeded; every operation retries it until then
 
     @property
@@ -208,6 +210,14 @@ class QdrantStore:
         res = await self._call(lambda: self.client.count(
             self.collection, count_filter=_owner_filter(owner), exact=True))
         return res.count
+
+    async def healthy(self) -> bool:
+        """Cached ping for /health: a success is reused for 60 s, a failure only for 5 s."""
+        checked_at, ok = self._health
+        if time.monotonic() - checked_at > (60 if ok else 5):
+            ok = await self.ping()
+            self._health = (time.monotonic(), ok)
+        return ok
 
     async def close(self) -> None:
         if self._client is not None:

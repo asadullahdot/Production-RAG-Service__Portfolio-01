@@ -22,6 +22,7 @@ from app.ingestion.chunking import chunk_sections
 from app.ingestion.embedding import Embedder, embed_texts
 from app.ingestion.extraction import extract
 from app.ingestion.store import VectorItem, VectorStore
+from app.llm_guard import deadline_var
 from app.logging_setup import log_event
 
 logger = logging.getLogger("rag.ingestion")
@@ -123,10 +124,14 @@ class IngestionService:
         return doc_out(row)
 
     async def _cleanup(self, owner_id: str, doc_id: str) -> None:
+        async def delete():
+            deadline_var.set(None)  # the request deadline may be spent; the cleanup still gets Qdrant's own timeout
+            await self.store.delete_document(owner_id, doc_id)
         try:
-            await asyncio.shield(self.store.delete_document(owner_id, doc_id))
-        except Exception as exc:
-            log_event(logger, "cleanup of partial upload failed", logging.ERROR, error=type(exc).__name__)
+            await asyncio.shield(delete())
+        except Exception as exc:  # orphans are harmless to answers (registry filter) but worth a loud log line
+            log_event(logger, "cleanup of partial upload failed; orphan vectors remain", logging.ERROR,
+                      error=type(exc).__name__, doc_id=doc_id, owner_id=owner_id)
 
     # ------------------------------------------------------------------ list / delete
     async def list(self, owner_id: str) -> list[dict]:

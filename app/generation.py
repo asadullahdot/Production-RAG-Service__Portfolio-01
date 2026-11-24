@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 import time
 
 from fastapi.concurrency import run_in_threadpool
@@ -49,7 +50,10 @@ def _clean_name(name: str) -> str:
 
 
 def _escape(text: str) -> str:
-    return re.sub(r"</?\s*context\s*>", "[context-tag-removed]", text, flags=re.IGNORECASE)
+    """Neutralise anything that looks like a <context> tag: full-width brackets, odd spacing, invisible characters."""
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    return re.sub(r"<[\s/]*context[^>]*>", "[context-tag-removed]", text, flags=re.IGNORECASE)
 
 
 def build_user_prompt(question: str, chunks: list[RetrievedChunk], max_chars: int) -> tuple[str, list[RetrievedChunk]]:

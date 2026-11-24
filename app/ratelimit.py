@@ -7,6 +7,11 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 
+from starlette.requests import Request
+
+from app import auth
+from app.config import Settings
+
 
 class RateLimiter:
     def __init__(self, limit_per_min: int, window_s: float = 60.0, clock=time.monotonic):
@@ -38,3 +43,20 @@ class RateLimiter:
 
     def reset(self) -> None:
         self._hits.clear()
+
+
+def rate_key(request: Request, settings: Settings) -> str:
+    """User id when a valid token is present (no DB hit), otherwise the client IP (always IP for /auth/*)."""
+    if settings.auth_enabled and not request.url.path.startswith("/auth/"):
+        header = request.headers.get("authorization", "")
+        if header.lower().startswith("bearer "):
+            user_id = auth.decode_token(header[7:], settings)
+            if user_id:
+                return f"user:{user_id}"
+    ip = request.client.host if request.client else "unknown"
+    if settings.behind_proxy:
+        # Proxies append the real peer on the right; the left side is whatever the client sent (spoofable).
+        parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+        if len(parts) >= settings.trusted_proxies:
+            ip = parts[-settings.trusted_proxies]
+    return f"ip:{ip}"

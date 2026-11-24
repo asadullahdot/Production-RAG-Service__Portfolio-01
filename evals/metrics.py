@@ -150,6 +150,8 @@ def assign_split(questions: list[dict], dev_fraction: float = 0.4, seed: int = 7
     for answerable in (True, False):
         group = sorted((q for q in questions if bool(q["answerable"]) == answerable), key=lambda q: q["id"])
         rng.shuffle(group)
+        if len(group) == 1:
+            raise ValueError("golden set needs at least 2 answerable and 2 unanswerable questions (so dev and test both have some)")
         n_dev = max(1, round(len(group) * dev_fraction)) if group else 0
         if len(group) >= 2:
             n_dev = min(n_dev, len(group) - 1)  # keep at least one question of this kind in test

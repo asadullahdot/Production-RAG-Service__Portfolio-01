@@ -188,7 +188,7 @@ class LLMGuard:
                 log_event(logger, "OpenAI retries exhausted", logging.ERROR, service=service, attempts=attempt, reason=reason)
                 raise UpstreamUnavailable()
             backoff = min(self.s.retry_backoff_max_s, self.s.retry_backoff_s * (2 ** (attempt - 1)))
-            wait = max(retry_after or 0.0, backoff * random.uniform(0.5, 1.0))
+            wait = max(min(retry_after or 0.0, self.s.retry_backoff_max_s), backoff * random.uniform(0.5, 1.0))
             if deadline is not None and time.monotonic() + wait >= deadline:
                 raise UpstreamUnavailable()
             log_event(logger, "OpenAI call failed; retrying", logging.WARNING,

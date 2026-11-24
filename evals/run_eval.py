@@ -134,7 +134,8 @@ def summarise(result: dict, split: str = "test") -> dict:
         "hit_at_k": metrics.mean(r["hit"] for r in ans), "mrr": metrics.mean(r["mrr"] for r in ans),
         "recall_at_k": metrics.mean(r["recall"] for r in ans),
         "faithfulness": metrics.mean(faith),
-        "correctness": metrics.mean(r.get("correctness", 0.0) for r in ans),
+        "correctness": metrics.mean(r.get("correctness", 0.0) for r in ans if not r.get("judge_parse_error")),
+        "judge_parse_errors": sum(1 for r in rows if r.get("judge_parse_error")),  # excluded from correctness/faithfulness
         "unanswerable_refused": (len(una_ok) / len(una)) if una else None,
         "over_refusal_rate": (sum(1 for r in ans if r.get("refused")) / len(ans)) if ans else None,
         "generation_ms_p50": metrics.percentile(lat, 0.5), "generation_ms_p95": metrics.percentile(lat, 0.95),
@@ -169,7 +170,7 @@ def pick_winner(a: dict, b: dict, min_net_questions: int = 2) -> dict:
 def print_summary(results: dict) -> None:
     def fmt(v):
         return "-" if v is None else (f"{v:.3f}" if isinstance(v, float) else str(v))
-    cols = ["hit_at_k", "mrr", "recall_at_k", "faithfulness", "correctness", "unanswerable_refused", "over_refusal_rate",
+    cols = ["hit_at_k", "mrr", "recall_at_k", "faithfulness", "correctness", "unanswerable_refused", "over_refusal_rate", "judge_parse_errors",
             "generation_ms_p50", "generation_ms_p95", "tokens_per_question"]
     print(f"\nTest-split results ({results['date']}, commit {results['git_commit']}, cached calls: {results['cache']['hits']})")
     print(f"{'config':<8}{'thr':>7}  " + "  ".join(f"{c[:14]:>14}" for c in cols))
