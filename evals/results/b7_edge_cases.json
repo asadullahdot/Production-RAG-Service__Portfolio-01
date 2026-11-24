@@ -1,0 +1,223 @@
+{
+ "date": "2026-11-24T16:22:29+00:00",
+ "passed": 27,
+ "total": 27,
+ "cases": [
+  {
+   "brief_item": "question before any upload",
+   "case": "ask with no documents",
+   "expected": "refused, reason no_documents",
+   "observed": "refused=True reason=no_documents",
+   "pass": true,
+   "seconds": 0.0
+  },
+  {
+   "brief_item": "scanned or empty PDF",
+   "case": "empty PDF (no text)",
+   "expected": "400 no_text",
+   "observed": "400 no_text",
+   "pass": true,
+   "seconds": 0.2
+  },
+  {
+   "brief_item": "scanned or empty PDF",
+   "case": "scanned PDF (image only, no text layer)",
+   "expected": "400 no_text",
+   "observed": "400 no_text",
+   "pass": true,
+   "seconds": 0.1
+  },
+  {
+   "brief_item": "same file twice",
+   "case": "upload the same file twice, then delete and re-upload",
+   "expected": "201, 409 with the existing doc_id, then 201",
+   "observed": "201, 409, then 201",
+   "pass": true,
+   "seconds": 3.2
+  },
+  {
+   "brief_item": "very large file",
+   "case": "12 MB file (limit 10 MB)",
+   "expected": "413 file_too_large",
+   "observed": "413 file_too_large",
+   "pass": true,
+   "seconds": 0.1
+  },
+  {
+   "brief_item": "very long document",
+   "case": "250-page PDF (limit 200 pages)",
+   "expected": "413 file_too_large",
+   "observed": "413 file_too_large",
+   "pass": true,
+   "seconds": 0.1
+  },
+  {
+   "brief_item": "very long document",
+   "case": "120-page PDF accepted, fact from page 100 found",
+   "expected": "201, answer 'building seven', chunk from page 100",
+   "observed": "201; answer='The emergency generator is in building seven, next to the lo'",
+   "pass": true,
+   "seconds": 8.0
+  },
+  {
+   "brief_item": "question the documents cannot answer",
+   "case": "unanswerable question",
+   "expected": "refused",
+   "observed": "refused=True reason=no_relevant_context",
+   "pass": true,
+   "seconds": 2.5
+  },
+  {
+   "brief_item": "question about a deleted document",
+   "case": "ask, delete the document, ask again",
+   "expected": "answered, then refused (no_documents), and 404 when targeting it",
+   "observed": "before refused=False; after reason=no_documents; targeted 404",
+   "pass": true,
+   "seconds": 5.3
+  },
+  {
+   "brief_item": "two documents that contradict each other",
+   "case": "30 days (2023) versus 14 days (2024)",
+   "expected": "the answer gives both figures and cites both documents",
+   "observed": "cited ['policy_2023.pdf', 'policy_2024.docx']; answer='The 2024 policy allows 14 days; the 2023 policy allows 30 days, so the documents differ. ['",
+   "pass": true,
+   "seconds": 5.6
+  },
+  {
+   "brief_item": "tables in files",
+   "case": "price table in a Word file",
+   "expected": "$99.00 and backordered",
+   "observed": "answer='Widget B costs $99.00 and is backordered until May, so it is not in stock. [1]'",
+   "pass": true,
+   "seconds": 5.0
+  },
+  {
+   "brief_item": "special characters in files",
+   "case": "accents, ligature, emoji, curly quotes, RTL marks",
+   "expected": "the password with its special characters",
+   "observed": "answer='Zürich-Œuvre-42[1]'",
+   "pass": true,
+   "seconds": 7.9
+  },
+  {
+   "brief_item": "non-English text in files",
+   "case": "French document, English and French questions, unanswerable one",
+   "expected": "answered in both; the refusal text stays English",
+   "observed": "EN 'The municipal library is open Monday through '; FR refused=False; unanswerable refused=True",
+   "pass": true,
+   "seconds": 14.6
+  },
+  {
+   "brief_item": "non-English text in files",
+   "case": "Urdu document (right-to-left), English and Urdu questions",
+   "expected": "answered",
+   "observed": "EN 'The office is open Monday through Friday, from 9:00 a.m. to '; UR refused=False",
+   "pass": true,
+   "seconds": 9.5
+  },
+  {
+   "brief_item": "special characters in files",
+   "case": "file name containing <script> tags",
+   "expected": "accepted and returned as plain data (JSON); the UI shows it as text",
+   "observed": "201; stored name=['<script>alert(1)</script>.txt']",
+   "pass": true,
+   "seconds": 0.5
+  },
+  {
+   "brief_item": "question the documents cannot answer",
+   "case": "empty question and a 1001-character question",
+   "expected": "422 invalid_request for both",
+   "observed": "422, 422",
+   "pass": true,
+   "seconds": 0.0
+  },
+  {
+   "brief_item": "several uploads at the same time",
+   "case": "the same file sent 8 times at once",
+   "expected": "exactly one stored: 1x 201 and 7x 409",
+   "observed": "{201: 1, 409: 7}; documents stored=1",
+   "pass": true,
+   "seconds": 0.6
+  },
+  {
+   "brief_item": "several uploads at the same time",
+   "case": "6 different documents at once",
+   "expected": "all 6 stored (6x 201)",
+   "observed": "{201: 6}; stored=6",
+   "pass": true,
+   "seconds": 1.3
+  },
+  {
+   "brief_item": "several questions at the same time",
+   "case": "10 questions at once",
+   "expected": "all 10 answered with HTTP 200 and distinct request ids",
+   "observed": "{200: 10}; answered=10/10",
+   "pass": true,
+   "seconds": 13.5
+  },
+  {
+   "brief_item": "LLM timing out",
+   "case": "ask while the answer model times out",
+   "expected": "503 upstream_unavailable after bounded retries, no vendor message or traceback",
+   "observed": "503 upstream_unavailable in 1.5s (2 retries)",
+   "pass": true,
+   "seconds": 1.5
+  },
+  {
+   "brief_item": "LLM rate-limiting",
+   "case": "ask while the answer model rate-limits us (HTTP 429)",
+   "expected": "503 upstream_unavailable after bounded retries, no vendor message or traceback",
+   "observed": "503 upstream_unavailable in 1.4s (2 retries)",
+   "pass": true,
+   "seconds": 1.4
+  },
+  {
+   "brief_item": "embedding API timing out",
+   "case": "ask while the embedding API times out",
+   "expected": "503 upstream_unavailable after bounded retries, no vendor message or traceback",
+   "observed": "503 upstream_unavailable in 1.8s (2 retries)",
+   "pass": true,
+   "seconds": 1.8
+  },
+  {
+   "brief_item": "embedding API timing out",
+   "case": "upload while the embedding API times out",
+   "expected": "503 and nothing half-stored",
+   "observed": "503; documents before=1, after=1",
+   "pass": true,
+   "seconds": 0.9
+  },
+  {
+   "brief_item": "embedding API rate-limiting",
+   "case": "ask while the embedding API rate-limits us (HTTP 429)",
+   "expected": "503 upstream_unavailable after bounded retries, no vendor message or traceback",
+   "observed": "503 upstream_unavailable in 2.0s (2 retries)",
+   "pass": true,
+   "seconds": 2.0
+  },
+  {
+   "brief_item": "dependency outage",
+   "case": "ask while the vector database is down",
+   "expected": "503 upstream_unavailable after bounded retries, no vendor message or traceback",
+   "observed": "503 upstream_unavailable in 4.1s (2 retries)",
+   "pass": true,
+   "seconds": 4.1
+  },
+  {
+   "brief_item": "dependency outage",
+   "case": "upload while the vector database is down",
+   "expected": "503 and nothing half-stored",
+   "observed": "503; documents before=1, after=1",
+   "pass": true,
+   "seconds": 0.3
+  },
+  {
+   "brief_item": "dependency outage",
+   "case": "service answers normally again (no restart needed)",
+   "expected": "answered",
+   "observed": "refused=False",
+   "pass": true,
+   "seconds": 6.3
+  }
+ ]
+}

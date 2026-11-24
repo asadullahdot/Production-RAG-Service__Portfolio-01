@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     input_screen: bool = True  # a model screens every question the patterns passed, in parallel with the embedding (can only block)
     input_recheck: bool = True  # a model double-checks questions the regex guardrail blocked (releases false positives)
     trusted_proxies: int = Field(default=1, ge=1)  # proxies in front of us; the client IP is that many entries from the right of X-Forwarded-For
-    demo_fault: str = "none"  # none | llm_timeout | llm_429 | vector_db_down
+    demo_fault: str = "none"  # none | llm_timeout | llm_429 | embed_timeout | embed_429 | vector_db_down (demo only)
     request_deadline_s: float = 60.0
 
     # models
@@ -165,6 +165,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_consistency(self):
+        allowed_faults = {"none", "llm_timeout", "llm_429", "embed_timeout", "embed_429", "vector_db_down"}
+        if self.demo_fault not in allowed_faults:
+            raise ValueError(f"DEMO_FAULT must be one of {sorted(allowed_faults)}")
+        if self.env == "production" and self.demo_fault != "none":
+            raise ValueError("DEMO_FAULT must be 'none' when ENV=production")
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
         if self.top_k > self.top_k_max:
