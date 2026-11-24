@@ -76,23 +76,22 @@ class CachedOpenAI:
                 self.cache.put(_key("embed", self.s.embedding_model, str(self.s.embedding_dim), texts[i]), vec)
         return out  # type: ignore[return-value]
 
-    async def _llm(self, kind: str, model: str, effort: str, system: str, user: str) -> LLMResult:
+    async def _llm(self, kind: str, model: str, effort: str, system: str, user: str, override: str | None = None) -> LLMResult:
         key = _key(kind, model, effort, PROMPT_VERSION, self.config_id, system, user)
         hit = self.cache.get(key)
         if hit:
             self.last = {"latency_ms": hit["latency_ms"], "cached": True}
             return LLMResult(hit["text"], hit["input_tokens"], hit["output_tokens"], hit.get("status", "completed"))
         started = time.monotonic()
-        call = self.inner.generate if kind == "generate" else self.inner.judge
-        res = await call(system, user)
+        res = await (self.inner.generate(system, user, override) if kind == "generate" else self.inner.judge(system, user))
         latency_ms = int((time.monotonic() - started) * 1000)
         self.cache.put(key, {"text": res.text, "input_tokens": res.input_tokens, "output_tokens": res.output_tokens,
                              "status": res.status, "latency_ms": latency_ms})
         self.last = {"latency_ms": latency_ms, "cached": False}
         return res
 
-    async def generate(self, system: str, user: str) -> LLMResult:
-        return await self._llm("generate", self.s.llm_model, self.s.llm_reasoning_effort, system, user)
+    async def generate(self, system: str, user: str, effort: str | None = None) -> LLMResult:
+        return await self._llm("generate", self.s.llm_model, effort or self.s.llm_reasoning_effort, system, user, effort)
 
     async def judge(self, system: str, user: str) -> LLMResult:
         return await self._llm("judge", self.s.judge_model, self.s.judge_reasoning_effort, system, user)

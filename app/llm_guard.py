@@ -103,8 +103,8 @@ class LLMGuard:
             raise UpstreamUnavailable()
         return vectors
 
-    async def generate(self, system: str, user: str) -> LLMResult:
-        return await self._respond("llm", self.s.llm_model, self.s.llm_reasoning_effort, system, user,
+    async def generate(self, system: str, user: str, effort: str | None = None) -> LLMResult:
+        return await self._respond("llm", self.s.llm_model, effort or self.s.llm_reasoning_effort, system, user,
                                    self.s.llm_max_output_tokens)
 
     async def judge(self, system: str, user: str) -> LLMResult:

@@ -20,6 +20,9 @@ INJECTION_REFUSAL_TEXT = "I can't follow instructions that try to change my rule
 # HARD patterns are always refused. SOFT patterns also match ordinary document questions ("show your rules for
 # refunds", "how do I jailbreak ...", "developer mode"), so only those may be released by the model recheck.
 HARD_INJECTION_PATTERNS = [
+    r"(system_prompt|developer_instructions|security_rules|api_configuration|retrieved_context)\s*:",  # a dump template
+    r"(output|reveal|print|show|display|include)\s+(me\s+)?your\s+(internal|hidden|exact|original|full)\s+(context|instructions|prompt|configuration|rules)",
+    r"instructions\s+that\s+(controlled|governed|guided)\s+your\s+behaviou?r",
     r"ignore\s+(all\s+|any\s+|the\s+|your\s+|of\s+)*(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"disregard\s+(all\s+|any\s+|the\s+|your\s+|of\s+)*(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"forget\s+(all\s+|everything\s+|your\s+)(previous\s+|prior\s+|above\s+|earlier\s+)?(instructions?|rules?)",
@@ -30,11 +33,15 @@ HARD_INJECTION_PATTERNS = [
     r"(give|tell|show|reveal|share|print|send)\s+(me\s+)?(your|the\s+system'?s?|the\s+server'?s?)\s+(api[\s_-]?key|secret[\s_-]?key|access\s+token|password|credentials)",
 ]
 SOFT_INJECTION_PATTERNS = [
+    r"for\s+this\s+(diagnostic|debug(ging)?|audit)\s+session",
+    r"authori[sz]ed\s+(internal\s+)?(audit|diagnostic|debug(ging)?)",
     r"what\s+(is|are)\s+your\s+(api[\s_-]?key|secret|password|credentials)",  # also "what is your password policy?"
     r"(reveal|show|print|repeat|display|output)\s+(me\s+)?(your\s+(system\s+)?|the\s+system\s+)(prompt|instructions|rules|configuration)",
     r"what\s+(is|are)\s+your\s+(system\s+)?(prompt|instructions)",
 ]
 HARD_JAILBREAK_PATTERNS = [
+    r"your\s+(previous|prior|former|old)\s+(identity|persona|self)\b",
+    r"you\s+are\s+now\s+(an?\s+)?(ai|assistant|bot|model|chatbot)\b[^.?!]{0,60}\b(no|without|never)\b",
     r"do\s+anything\s+now",
     r"pretend\s+(that\s+)?you\s+(are|have)\s+no\s+(rules|restrictions|limits|guidelines)",
     r"(act|behave|respond)\s+as\s+(if\s+)?(you\s+(are|were)\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered)",
@@ -42,6 +49,9 @@ HARD_JAILBREAK_PATTERNS = [
     r"roleplay\s+as\s+.*(no\s+rules|evil|unrestricted)",
 ]
 SOFT_JAILBREAK_PATTERNS = [
+    r"role-?\s?play(ing)?\s+(game|as)\b",
+    r"\bstay\s+in\s+character\b",
+    r"(has|have|with)\s+no\s+(rules|limitations|restrictions)",
     r"\bDAN\b",
     r"(^|[.!?]\s+)(please\s+)?(enable|enter|activate|switch\s+to|turn\s+on)\s+developer\s+mode",  # an order, not "how do I enable ..."
     r"you\s+are\s+(now\s+)?in\s+developer\s+mode",
@@ -83,6 +93,8 @@ class Settings(BaseSettings):
     # general
     env: str = "dev"
     behind_proxy: bool = False
+    screen_reasoning_effort: str = "none"  # a yes/no classifier needs no reasoning: ~2 s instead of 10-14 s (measured 24 Nov 2026)
+    input_screen: bool = True  # a model screens every question the patterns passed, in parallel with the embedding (can only block)
     input_recheck: bool = True  # a model double-checks questions the regex guardrail blocked (releases false positives)
     trusted_proxies: int = Field(default=1, ge=1)  # proxies in front of us; the client IP is that many entries from the right of X-Forwarded-For
     demo_fault: str = "none"  # none | llm_timeout | llm_429 | vector_db_down

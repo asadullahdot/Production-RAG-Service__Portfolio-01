@@ -15,7 +15,7 @@ from tests.fakes import DIM, FakeOpenAI
 def make_settings(tmp_path, **overrides) -> Settings:
     base = dict(sqlite_path=str(tmp_path / "test.db"), similarity_threshold=0.15, rate_limit_per_min=1000,
                 embedding_dim=DIM, qdrant_path=":memory:", max_retries=2, retry_backoff_s=0.0, retry_backoff_max_s=0.0,
-                jwt_secret="x" * 40, openai_api_key="test", input_recheck=False)
+                jwt_secret="x" * 40, openai_api_key="test", input_recheck=False, input_screen=False)
     base.update(overrides)
     return Settings(_env_file=None, **base)
 

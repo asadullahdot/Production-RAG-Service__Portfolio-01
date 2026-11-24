@@ -44,7 +44,7 @@ class FakeOpenAI:
             raise UpstreamUnavailable()
         return [embed_text(t) for t in texts]
 
-    async def generate(self, system, user):
+    async def generate(self, system, user, effort=None):
         self.llm_calls += 1
         self.prompts.append((system, user))
         if self.script:

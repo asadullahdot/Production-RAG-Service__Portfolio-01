@@ -28,9 +28,10 @@ def _to_chunk(n: int, hit) -> RetrievedChunk:
 
 async def retrieve(owner_id: str, question: str, *, embedder: Embedder, store: VectorStore, db: Database,
                    settings: Settings, top_k: int | None = None, doc_ids: list[str] | None = None,
-                   threshold: float | None = None) -> RetrievalResult:
+                   threshold: float | None = None, vector: list[float] | None = None) -> RetrievalResult:
     k = min(top_k or settings.top_k, settings.top_k_max)
-    vector = (await embedder.embed([question]))[0]
+    if vector is None:
+        vector = (await embedder.embed([question]))[0]
     hits = await store.query(owner_id, vector, k * 3, doc_ids)  # over-fetch: orphans dropped below must not starve the top-k
     registered = await run_in_threadpool(db.doc_ids, owner_id)
     # The registry is the source of truth: leftover vectors from failed cleanups never surface.

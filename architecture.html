@@ -57,7 +57,7 @@
     <div class="arrow">calls service</div>
     <div class="layer l3"><h3>3 · Input guardrails</h3><small>app/guardrails.py</small>
       <div class="row"><div class="box"><b>Length / empty</b><span>reject → <span class="err">422</span></span></div>
-      <div class="box"><b>Injection / jailbreak</b><span>pattern/heuristic check (English only) → 200 refused + reason</span></div>
+      <div class="box"><b>Injection / jailbreak</b><span>pattern check (English) → model recheck of soft matches → model screen in parallel with the embedding, before the vector search → 200 refused + reason</span></div>
       <div class="box"><b>No documents yet</b><span>registry empty → 200 refused: no_documents</span></div></div></div>
     <div class="arrow">clean question</div>
     <div class="layer l4"><h3>4 · Retrieval</h3><small>app/retrieval.py</small>
