@@ -196,7 +196,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         c: Container = request.app.state.container
         sqlite_ok = c.db.ping()
         checked_at, vector_db_ok = request.app.state.vector_db_checked
-        if time.monotonic() - checked_at > 60:  # cached so probes don't hit the vector DB
+        if time.monotonic() - checked_at > (60 if vector_db_ok else 5):  # successes cached 60 s so probes don't hit the vector DB; failures only 5 s
             vector_db_ok = await c.store.ping()
             request.app.state.vector_db_checked = (time.monotonic(), vector_db_ok)
         ok = sqlite_ok and vector_db_ok

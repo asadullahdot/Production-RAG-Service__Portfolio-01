@@ -50,7 +50,8 @@ class IngestionService:
 
     # ------------------------------------------------------------------ upload
     async def upload(self, owner_id: str, filename: str, data: bytes, content_type: str | None = None) -> dict:
-        file_type = guardrails.validate_upload(filename, content_type, data, self.s, self.allowed_types)
+        file_type = await run_in_threadpool(guardrails.validate_upload, filename, content_type, data, self.s,
+                                            self.allowed_types)
         file_hash = await run_in_threadpool(lambda: hashlib.sha256(data).hexdigest())
 
         key = (owner_id, file_hash)

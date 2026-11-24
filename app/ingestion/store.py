@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -23,6 +24,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedR
 
 from app.config import Settings
 from app.errors import UpstreamUnavailable
+from app.llm_guard import deadline_var
 from app.logging_setup import log_event
 
 logger = logging.getLogger("rag.store")
@@ -97,7 +99,7 @@ class QdrantStore:
     def _retryable(exc: Exception) -> bool:
         """Only network trouble, timeouts and 5xx are worth retrying; bad requests and code errors are not."""
         if isinstance(exc, UnexpectedResponse):
-            return exc.status_code >= 500
+            return exc.status_code >= 500 or exc.status_code == 429
         return isinstance(exc, (asyncio.TimeoutError, ConnectionError, OSError, ResponseHandlingException))
 
     async def _call(self, make_call, retries: int | None = None):
@@ -107,8 +109,14 @@ class QdrantStore:
             raise UpstreamUnavailable()
         attempt = 0
         while True:
+            deadline = deadline_var.get()  # the one request deadline also covers Qdrant
+            timeout = self.s.qdrant_timeout_s
+            if deadline is not None:
+                if time.monotonic() >= deadline:
+                    raise UpstreamUnavailable()
+                timeout = max(0.1, min(timeout, deadline - time.monotonic()))
             try:
-                return await asyncio.wait_for(make_call(), timeout=self.s.qdrant_timeout_s)
+                return await asyncio.wait_for(make_call(), timeout=timeout)
             except UpstreamUnavailable:
                 raise
             except Exception as exc:  # network, auth, timeout, server error
@@ -119,6 +127,8 @@ class QdrantStore:
                 wait = min(self.s.retry_backoff_max_s, self.s.retry_backoff_s * (2 ** (attempt - 1))) * random.uniform(0.5, 1.0)
                 log_event(logger, "Qdrant call failed; retrying", logging.WARNING,
                           error=type(exc).__name__, attempt=attempt, wait_s=round(wait, 2))
+                if deadline is not None and time.monotonic() + wait >= deadline:
+                    raise UpstreamUnavailable() from exc
                 await self._sleep(wait)
 
     async def ensure_collection(self) -> None:

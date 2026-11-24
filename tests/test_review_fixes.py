@@ -400,3 +400,79 @@ def test_shutdown_closes_the_store(tmp_path):
     with TestClient(e.app):
         e.store.client  # make sure the client exists
     assert e.store._client is not None  # closed without error (close() ran in the lifespan shutdown)
+
+
+# ---- fourth review round (24 Nov 2026) --------------------------------------------------------------
+def _encrypted_docx() -> bytes:
+    import io
+    import re
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", "<w:document/>")
+    data = buf.getvalue()
+    data = re.sub(rb"(PK\x03\x04.{2})(.{2})", lambda m: m.group(1) + b"\x01\x00", data, flags=re.S)       # local headers
+    return re.sub(rb"(PK\x01\x02.{4})(.{2})", lambda m: m.group(1) + b"\x01\x00", data, flags=re.S)       # central directory
+
+
+def test_encrypted_zip_member_is_a_clean_400_not_a_500():
+    from app.errors import EncryptedFile
+    with pytest.raises(EncryptedFile):
+        guardrails.validate_upload("a.docx", None, _encrypted_docx(), Settings(_env_file=None), {"docx"})
+
+
+def test_evidence_matching_needs_close_words_and_the_right_numbers():
+    from evals.metrics import span_matches
+    chunk = ("The store is open to the public. The refund of the items in the shop is limited. "
+             "Items must be returned in 30 days of the purchase date.")
+    assert not span_matches(chunk, "The refund of the items in the store is 14 days")      # different figure
+    assert not span_matches(chunk, "The store is the public refund of items is within 14 days")  # scrambled
+    assert span_matches(chunk, "Items must be returned in 30 days of the purchase date")  # contiguous
+    assert span_matches("... items must be returned in 30 days of the purchase", "Items must be returned in 30 days of the purchase date")  # cut by a boundary
+
+
+def test_qdrant_calls_stop_at_the_request_deadline_and_retry_429():
+    import time
+    from qdrant_client.http.exceptions import UnexpectedResponse
+    from app.llm_guard import deadline_var
+    s = Settings(_env_file=None, embedding_dim=DIM, qdrant_path=":memory:", max_retries=3, retry_backoff_s=0.0)
+
+    async def nap(_):
+        pass
+    store = QdrantStore(s, sleep=nap)
+    calls = []
+
+    async def rate_limited_then_ok():
+        calls.append(1)
+        if len(calls) < 3:
+            raise UnexpectedResponse(429, "Too Many Requests", b"", {})
+        return "ok"
+    assert asyncio.run(store._call(rate_limited_then_ok)) == "ok" and len(calls) == 3
+
+    async def expired():
+        deadline_var.set(time.monotonic() - 1)
+        calls.clear()
+
+        async def never():
+            calls.append(1)
+        with pytest.raises(UpstreamUnavailable):
+            await store._call(never)
+        assert calls == []
+    asyncio.run(expired())
+
+
+def test_golden_split_rules():
+    from evals import metrics
+    from evals.run_eval import load_golden
+    import json
+    qs = [{"id": f"q{i}", "answerable": i % 2 == 0} for i in range(6)]
+    metrics.assign_split(qs)
+    for flag in (True, False):
+        assert any(q["split"] == "test" for q in qs if q["answerable"] == flag)
+    partial = [dict(id="a", answerable=True, split="dev"), dict(id="b", answerable=False)]
+    import tempfile, pathlib
+    p = pathlib.Path(tempfile.mkdtemp()) / "g.json"
+    p.write_text(json.dumps({"questions": partial}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_golden(p)

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from app.config import (API_KEY_REGEXES, DOCUMENT_INSTRUCTION_PATTERNS, INJECTION_PATTERNS,
                         JAILBREAK_PATTERNS, PROMPT_CANARY, SOFT_PATTERNS, Settings)
-from app.errors import CorruptFile, EmptyFile, FileTooLarge, InvalidRequest, MaliciousFile, UnsupportedType
+from app.errors import CorruptFile, EmptyFile, EncryptedFile, FileTooLarge, InvalidRequest, MaliciousFile, UnsupportedType
 
 # ----------------------------------------------------------------------------- upload
 EXT_TO_TYPE = {".pdf": "pdf", ".docx": "docx", ".pptx": "pptx", ".txt": "txt", ".md": "md", ".markdown": "md"}
@@ -91,7 +91,9 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
                     budget -= len(chunk)
                     if budget < 0:
                         raise MaliciousFile("The archive is too large when decompressed.")
-    except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as exc:
+    except RuntimeError as exc:  # an encrypted member: "password required"
+        raise EncryptedFile() from exc
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error, EOFError, NotImplementedError) as exc:
         raise CorruptFile() from exc
 
 

@@ -33,17 +33,25 @@ def span_matches(chunk_text: str, span: str, min_ratio: float = 0.8) -> bool:
     span_w, chunk_w = _words(span), _words(chunk_text)
     if not span_w:
         return False
-    # longest in-order (subsequence) overlap, computed greedily per span word over the chunk words
-    i = 0
-    matched = 0
-    for w in span_w:
-        try:
-            j = chunk_w.index(w, i)
-        except ValueError:
-            continue
-        matched += 1
-        i = j + 1
-    return matched / len(span_w) >= min_ratio
+    # Partial match (a span cut by a chunk boundary): the span's words must appear in order AND close together
+    # (inside a window of 1.5x the span length), and every number in the span must be among them. Otherwise a chunk
+    # that merely shares common words with the evidence, or states a different figure, would count as relevant.
+    numbers = {w for w in span_w if any(ch.isdigit() for ch in w)}
+    window = max(len(span_w), int(len(span_w) * 1.5 + 0.999))
+    for start in range(max(1, len(chunk_w) - window + 1)):
+        words = chunk_w[start:start + window]
+        i, matched, seen = 0, 0, set()
+        for w in span_w:
+            try:
+                j = words.index(w, i)
+            except ValueError:
+                continue
+            matched += 1
+            seen.add(w)
+            i = j + 1
+        if matched / len(span_w) >= min_ratio and numbers <= seen:
+            return True
+    return False
 
 
 def as_spans(evidence) -> list[str]:
@@ -143,5 +151,7 @@ def assign_split(questions: list[dict], dev_fraction: float = 0.4, seed: int = 7
         group = sorted((q for q in questions if bool(q["answerable"]) == answerable), key=lambda q: q["id"])
         rng.shuffle(group)
         n_dev = max(1, round(len(group) * dev_fraction)) if group else 0
+        if len(group) >= 2:
+            n_dev = min(n_dev, len(group) - 1)  # keep at least one question of this kind in test
         for i, q in enumerate(group):
             q["split"] = "dev" if i < n_dev else "test"

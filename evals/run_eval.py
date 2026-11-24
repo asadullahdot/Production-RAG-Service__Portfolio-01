@@ -35,7 +35,10 @@ CONFIGS = {"A": (1000, 200), "B": (500, 100)}
 def load_golden(path: Path) -> list[dict]:
     data = json.loads(path.read_text(encoding="utf-8"))
     questions = data["questions"] if isinstance(data, dict) else data
-    if not any("split" in q for q in questions):
+    have = sum("split" in q for q in questions)
+    if have not in (0, len(questions)):
+        raise ValueError("golden set: either every question has a \"split\" or none does")
+    if have == 0:
         metrics.assign_split(questions)
     return questions
 
@@ -100,7 +103,7 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
         resp = await container.ask.ask(owner, AskRequest(question=q["question"]))
         row.update(refused=resp.refused, reason=resp.reason, answer=resp.answer,
                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
-                   generation_ms=cached.last.get("latency_ms", 0) if resp.usage.input_tokens else 0)
+                   generation_ms=cached.last.get("latency_ms", 0) if resp.usage.input_tokens and resp.reason is None else 0)
         row["citations"] = [c.n for c in resp.citations]
         if use_judge and not resp.refused:
             # The judge must see exactly the chunks that were in the prompt: above the threshold and within the
@@ -110,7 +113,7 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
                                    q.get("reference_answer") if q["answerable"] else None)
             row.update(faithfulness=v.faithfulness, correctness=v.correctness, declines=v.declines,
                        judge_parse_error=v.parse_error, n_doc_claims=len(v.document_claims))
-        elif q["answerable"]:
+        elif q["answerable"] and resp.refused:
             row.update(correctness=0.0)  # over-refusal scores 0
     await store.delete_owner(owner)
     return {"config": name, "chunk_size": size, "chunk_overlap": overlap, "documents": len(docs), "chunks": num_chunks,
