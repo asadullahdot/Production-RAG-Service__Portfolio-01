@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import openai
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app import telemetry as tel
 from app.config import Settings
 from app.errors import UpstreamUnavailable
 from app.logging_setup import log_event
@@ -94,6 +95,12 @@ class LLMGuard:
 
     # ------------------------------------------------------------------ public API
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        # The wrapper does not report embedding tokens, so the cost estimate uses about 4 characters per token.
+        with tel.span("embed", model=self.s.embedding_model, texts=len(texts),
+                      **{"embed.tokens_est": sum(len(t) for t in texts) // 4}):
+            return await self._embed(texts)
+
+    async def _embed(self, texts: list[str]) -> list[list[float]]:
         async def call():
             return await self.embeddings.aembed_documents(texts)
         vectors = await self._with_policy("embed", call)
@@ -114,6 +121,11 @@ class LLMGuard:
     # ------------------------------------------------------------------ internals
     async def _respond(self, service: str, model: str, effort: str, system: str, user: str,
                        max_tokens: int) -> LLMResult:
+        with tel.span("llm.generate" if service == "llm" else "llm.judge", model=model, effort=effort):
+            return await self._respond_inner(service, model, effort, system, user, max_tokens)
+
+    async def _respond_inner(self, service: str, model: str, effort: str, system: str, user: str,
+                             max_tokens: int) -> LLMResult:
         for attempt in range(2):  # second pass only when the first was cut off by the token cap
             async def call(cap=max_tokens):
                 chat = self._chat(model, effort, cap)
@@ -127,6 +139,8 @@ class LLMGuard:
                     status=meta.get("status", "completed") or "completed",
                 )
             result = await self._with_policy(service, call)
+            tel.add("tokens.input", result.input_tokens)  # both passes count when the first hit the output cap
+            tel.add("tokens.output", result.output_tokens)
             if result.status == "incomplete" and attempt == 0:
                 max_tokens *= 2
                 log_event(logger, "output cap hit; retrying once with a larger cap", logging.WARNING, service=service)
@@ -188,6 +202,7 @@ class LLMGuard:
                 raise UpstreamUnavailable() from exc
 
             attempt += 1
+            tel.add("retries")
             if attempt > self.s.max_retries:
                 log_event(logger, "OpenAI retries exhausted", logging.ERROR, service=service, attempts=attempt, reason=reason)
                 raise UpstreamUnavailable()

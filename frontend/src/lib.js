@@ -77,3 +77,63 @@ export function scopeIds(docs, excluded) {
 export function isSendKey(e) {
   return e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229;
 }
+
+// ---- monitoring (B3) ---------------------------------------------------------------------------------------------
+export function formatMs(ms) {
+  if (ms == null) return "–";
+  if (ms >= 1000) return (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + " s";
+  return Math.round(ms) + " ms";
+}
+
+export function formatPercent(x) {
+  return x == null ? "–" : (x * 100).toFixed(x > 0 && x < 0.01 ? 2 : 1) + "%";
+}
+
+export function formatCost(usd) {
+  if (usd == null) return "–";
+  if (usd === 0) return "$0";
+  if (usd < 0.0001) return "<$0.0001";
+  return "$" + usd.toFixed(usd < 0.01 ? 4 : 2);
+}
+
+export function formatCount(n) {
+  return n == null ? "–" : Math.round(n).toLocaleString();
+}
+
+export function statusTone(status) {
+  return status >= 500 ? "bad" : status >= 400 ? "warn" : "ok";
+}
+
+const STEP_LABELS = {
+  request: "Whole request", input_guardrails: "Input guardrails", recheck: "Model recheck", registry_check: "Document registry",
+  screen: "Model screen", embed: "Embed question", vector_search: "Vector search", registry_filter: "Registry filter",
+  answer: "Answer", "llm.generate": "Model call", output_guardrails: "Output guardrails", citations: "Citation check",
+  validate: "Validate file", extract: "Extract text", chunk: "Split into chunks", embed_chunks: "Embed chunks",
+  vector_upsert: "Store vectors", registry_write: "Write registry", vector_delete: "Delete vectors", registry_delete: "Delete registry row",
+};
+export const stepLabel = (name) => STEP_LABELS[name] || name;
+
+// Where each bar of the waterfall sits, in percent of the whole request. Every bar stays visible and inside the track.
+export function waterfallGeometry(spans, total) {
+  const whole = total > 0 ? total : 1;
+  return spans.map((s) => {
+    const left = Math.min(99, Math.max(0, (s.offset_ms / whole) * 100));
+    const width = Math.max(0.8, Math.min(100 - left, (s.duration_ms / whole) * 100));
+    return { left, width };
+  });
+}
+
+// A short, readable summary of a span's attributes for the trace view.
+export function spanDetail(attrs = {}) {
+  const parts = [];
+  if (attrs.model) parts.push(attrs.model);
+  if ("tokens.input" in attrs) parts.push(`${attrs["tokens.input"]} → ${attrs["tokens.output"] ?? 0} tokens`);
+  if (attrs.retries) parts.push(`${attrs.retries} ${attrs.retries === 1 ? "retry" : "retries"}`);
+  if ("hits" in attrs) parts.push(`${attrs.hits} hits`);
+  if (attrs.dropped) parts.push(`${attrs.dropped} dropped`);
+  if ("chunks" in attrs) parts.push(`${attrs.chunks} chunks`);
+  if ("pages" in attrs) parts.push(`${attrs.pages} pages`);
+  if (attrs.blocked === true) parts.push("blocked");
+  if (attrs["error.type"]) parts.push(`error: ${attrs["error.type"]}`);
+  return parts.join(" · ");
+}

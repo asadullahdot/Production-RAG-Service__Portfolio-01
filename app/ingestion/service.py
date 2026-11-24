@@ -15,6 +15,7 @@ import uuid
 from fastapi.concurrency import run_in_threadpool
 
 from app import guardrails
+from app import telemetry as tel
 from app.config import Settings
 from app.db import Database, now_iso
 from app.errors import AppError, DuplicateDocument, FileTooLarge, NoText, NotFound, UpstreamUnavailable
@@ -53,9 +54,10 @@ class IngestionService:
 
     # ------------------------------------------------------------------ upload
     async def upload(self, owner_id: str, filename: str, data: bytes, content_type: str | None = None) -> dict:
-        file_type = await run_in_threadpool(guardrails.validate_upload, filename, content_type, data, self.s,
-                                            self.allowed_types)
-        file_hash = await run_in_threadpool(lambda: hashlib.sha256(data).hexdigest())
+        with tel.span("validate", bytes=len(data)):
+            file_type = await run_in_threadpool(guardrails.validate_upload, filename, content_type, data, self.s,
+                                                self.allowed_types)
+            file_hash = await run_in_threadpool(lambda: hashlib.sha256(data).hexdigest())
 
         key = (owner_id, file_hash)
         entry = self._locks.setdefault(key, [asyncio.Lock(), 0])
@@ -73,7 +75,9 @@ class IngestionService:
         if existing:
             raise DuplicateDocument(details={"doc_id": existing["doc_id"]})
 
-        extracted = await run_in_threadpool(extract, data, file_type, self.s.max_pages)
+        with tel.span("extract", file_type=file_type):
+            extracted = await run_in_threadpool(extract, data, file_type, self.s.max_pages)
+            tel.annotate(pages=extracted.num_pages, chars=extracted.total_chars)
         if extracted.total_chars < self.s.min_extracted_chars:
             raise NoText()
         if file_type in ("pdf", "pptx") and extracted.num_pages > self.s.max_pages:  # DOCX/MD sections are not pages: the chunk cap bounds them
@@ -87,7 +91,9 @@ class IngestionService:
                 log_event(logger, "document contains instruction-like text (kept as data)", logging.WARNING,
                           file_name=filename, page=section.metadata["page"], patterns=len(hits))
 
-        drafts = await run_in_threadpool(chunk_sections, extracted.sections, self.chunk_size, self.chunk_overlap)
+        with tel.span("chunk"):
+            drafts = await run_in_threadpool(chunk_sections, extracted.sections, self.chunk_size, self.chunk_overlap)
+            tel.annotate(chunks=len(drafts))
         if not drafts:
             raise NoText()
         if len(drafts) > self.s.max_chunks_per_doc:
@@ -97,7 +103,8 @@ class IngestionService:
         ids = vector_ids(doc_id, len(drafts))
         started = time.monotonic()
         try:
-            vectors = await embed_texts(self.embedder, [d.text for d in drafts], self.s.embed_batch_size)
+            with tel.span("embed_chunks", chunks=len(drafts)):
+                vectors = await embed_texts(self.embedder, [d.text for d in drafts], self.s.embed_batch_size)
             uploaded_at = now_iso()
             items = [
                 VectorItem(id=ids[d.chunk_idx], values=vectors[i], metadata={
@@ -106,13 +113,15 @@ class IngestionService:
                     "uploaded_at": uploaded_at, "text": d.text})
                 for i, d in enumerate(drafts)
             ]
-            await self.store.upsert(owner_id, items)  # wait=True: points are searchable when this returns
+            with tel.span("vector_upsert", points=len(items)):
+                await self.store.upsert(owner_id, items)  # wait=True: points are searchable when this returns
             try:
-                row = await run_in_threadpool(
-                    lambda: self.db.add_document(
-                        doc_id=doc_id, owner_id=owner_id, file_name=filename, file_type=file_type,
-                        num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash,
-                        uploaded_at=uploaded_at, flagged=flagged))  # the same timestamp as the vector payload
+                with tel.span("registry_write"):
+                    row = await run_in_threadpool(
+                        lambda: self.db.add_document(
+                            doc_id=doc_id, owner_id=owner_id, file_name=filename, file_type=file_type,
+                            num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash,
+                            uploaded_at=uploaded_at, flagged=flagged))  # the same timestamp as the vector payload
             except sqlite3.IntegrityError as exc:  # lost a race on the unique (owner, hash) index
                 other = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
                 raise DuplicateDocument(details={"doc_id": other["doc_id"] if other else None}) from exc
@@ -147,5 +156,7 @@ class IngestionService:
         row = await run_in_threadpool(self.db.get_document, owner_id, doc_id)
         if row is None:
             raise NotFound("Document not found.")
-        await self.store.delete_document(owner_id, doc_id)  # one filtered delete; 503 on failure, row kept
-        await run_in_threadpool(self.db.delete_document, owner_id, doc_id)
+        with tel.span("vector_delete"):
+            await self.store.delete_document(owner_id, doc_id)  # one filtered delete; 503 on failure, row kept
+        with tel.span("registry_delete"):
+            await run_in_threadpool(self.db.delete_document, owner_id, doc_id)

@@ -8,7 +8,7 @@ import { DESCRIPTION, TAGLINE } from "../brand.js";
 const MAX = 1000;  // the server's MAX_QUESTION_CHARS
 const EXAMPLES = ["Summarise this in five bullet points.", "What are the key dates and numbers?", "What risks or limitations are mentioned?"];
 
-export default function Chat({ docs, loading, excluded, token }) {
+export default function Chat({ docs, loading, excluded, token, onOpenTrace }) {
   const [turns, setTurns] = useState([]);
   const [text, setText] = useState("");
   const box = useRef(null);
@@ -68,7 +68,7 @@ export default function Chat({ docs, loading, excluded, token }) {
             )}
           </div>
         ) : (
-          turns.map((t) => <Turn key={t.id} turn={t} />)
+          turns.map((t) => <Turn key={t.id} turn={t} onTrace={onOpenTrace} />)
         )}
         <div ref={end} />
       </div>

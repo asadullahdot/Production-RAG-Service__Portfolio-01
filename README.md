@@ -21,6 +21,7 @@ Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-0
 - Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.
 - One error shape for every failure, `X-Request-ID` on every response, JSON logs with secret redaction, in-memory rate limit (429), bounded retries/timeouts/concurrency for every OpenAI call (upstream failure → 503).
 - **Login (B1, on by default):** sign up and log in on the first screen; passwords are stored as Argon2id hashes; login returns a signed JWT (HS256, 60 minutes); every document and question endpoint needs it; each user can only see, search and delete their own documents. `JWT_SECRET` (32+ random characters) is required: generate one with `python -c "import secrets; print(secrets.token_hex(32))"`. Set `AUTH_ENABLED=false` for a no-login demo where everyone shares one owner.
+- **Monitoring and tracing (B3):** every question, upload, list and delete is traced step by step with OpenTelemetry (embedding, vector search, model calls, guardrails, ...) and stored in SQLite without any question or document text. The **Monitoring** tab shows latency p50/p95, error rate, refusals, tokens, estimated cost per question, where the time goes, requests over time and a waterfall for each request; every answer has a **Trace** link. You only see your own requests. `GET /metrics/summary`, `/metrics/requests`, `/metrics/requests/{request_id}` are in Swagger. `TELEMETRY_ENABLED=false` switches it off.
 - **React frontend (B4):** React + Vite + Tailwind, built into `app/static/` and served by FastAPI at `/` (the build is committed, so the app runs without Node). Soft, rounded KNOWLEX design with a branded sign-in screen; chat-style asking (Enter sends, Shift+Enter makes a new line), drag-and-drop upload, tick which documents a question may use, clickable `[n]` citations that open the source chunks (Sources start closed, with a one-line preview), plain-language refusals, delete with confirmation, light and dark theme, works from 360 px. All server text is rendered as React text, never as HTML. The earlier plain HTML/JS version is kept at the git tag `plain-frontend`.
 
 ## Setup (Windows PowerShell)
@@ -58,6 +59,10 @@ python -m evals.run_eval --config all
 
 Re-ingests the corpus per chunking config (A 1000/200, B 500/100) into an isolated Qdrant collection (`<name>_eval`) and a separate SQLite file, measures hit@k / recall@k / MRR, faithfulness, correctness, unanswerable handling, latency and tokens, tunes the similarity threshold on the dev split, reports the test split and picks the winner by the fixed rule. Outputs are cached in `evals/results/cache/`; results land in `evals/results/`.
 
+### Monitoring demo
+
+With the server running: `python scripts/demo_traffic.py` sends a realistic mix of requests (it creates a demo account and removes its documents afterwards), then open the **Monitoring** tab or run `python scripts/metrics_report.py` for a text report (also saved to `evals/results/b3_metrics.json`). To see failures too, restart once with `DEMO_FAULT=llm_timeout` and run `python scripts/demo_traffic.py --only-questions 3`. Cost is an estimate from published prices.
+
 ### Frontend (only needed to change the UI)
 
 Node 20+ is required. `cd frontend`, `npm install`, then `npm run dev` (UI on <http://localhost:5173/static/>, forwards API calls to a running `uvicorn app.main:app` on port 8000), `npm test` (unit tests), and `npm run build` (writes `app/static/`; commit the result).
@@ -81,13 +86,13 @@ Errors: `{"error": {"code", "message", "request_id", "details"?}}`. Full contrac
 
 ## Configuration
 
-All settings are environment variables read in `app/config.py` (names in `.env.example`; full table in [PLAN.md §6](PLAN.md)). Highlights: `SIMILARITY_THRESHOLD`, `TOP_K`, `CHUNK_SIZE`/`CHUNK_OVERLAP`, `MAX_UPLOAD_MB`, `RATE_LIMIT_PER_MIN`, `LLM_MAX_CONCURRENCY`, `MAX_RETRIES`, `AUTH_ENABLED`, `DEMO_FAULT` (demo only, refused when `ENV=production`: `llm_timeout`, `llm_429`, `embed_timeout`, `embed_429`, `vector_db_down`).
+All settings are environment variables read in `app/config.py` (names in `.env.example`; full table in [PLAN.md §6](PLAN.md)). Highlights: `SIMILARITY_THRESHOLD`, `TOP_K`, `CHUNK_SIZE`/`CHUNK_OVERLAP`, `MAX_UPLOAD_MB`, `RATE_LIMIT_PER_MIN`, `LLM_MAX_CONCURRENCY`, `MAX_RETRIES`, `AUTH_ENABLED`, `TELEMETRY_ENABLED`, `DEMO_FAULT` (demo only, refused when `ENV=production`: `llm_timeout`, `llm_429`, `embed_timeout`, `embed_429`, `vector_db_down`).
 
 ## Project layout
 
 ```
 app/            main.py (routes only) · config · schemas · errors · db · auth · guardrails · retrieval · generation
-                llm_guard (the only model caller) · ratelimit · container · ingestion/ · static/ (built UI)
+                llm_guard (the only model caller) · telemetry · metrics · ratelimit · container · ingestion/ · static/ (built UI)
 evals/          golden set, metrics, judge, cache, run_eval, guardrail cases
 frontend/       React source (B4); `npm run build` writes app/static/
 tests/          pytest suite (offline)         notebooks/  step-by-step notebooks

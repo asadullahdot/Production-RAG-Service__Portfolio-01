@@ -10,6 +10,7 @@ import time
 from fastapi.concurrency import run_in_threadpool
 
 from app import guardrails
+from app import telemetry as tel
 from app.config import (BLOCKED_TEXT, INJECTION_REFUSAL_TEXT, NOT_IN_DOCUMENTS, PROMPT_CANARY,
                         REFUSAL_TEXT, Settings)
 from app.db import Database
@@ -155,18 +156,21 @@ class AskService:
         question = guardrails.check_question(req.question, self.s)
         usage = Usage()
 
-        verdict = guardrails.check_input(question)
         released = False  # True when the model recheck already judged this question harmless
-        if not verdict.allowed and verdict.soft and self.s.input_recheck and await self._recheck_allows(question, usage):
-            released = True
-            log_event(logger, "regex guardrail overruled by the model recheck (false positive)", logging.INFO,
-                      reason=verdict.reason)
-            verdict = guardrails.InputVerdict(True)
+        with tel.span("input_guardrails"):
+            verdict = guardrails.check_input(question)
+            if not verdict.allowed and verdict.soft and self.s.input_recheck and await self._recheck_allows(question, usage):
+                released = True
+                log_event(logger, "regex guardrail overruled by the model recheck (false positive)", logging.INFO,
+                          reason=verdict.reason)
+                verdict = guardrails.InputVerdict(True)
+            tel.annotate(blocked=not verdict.allowed, reason=verdict.reason or "", released=released)
         if not verdict.allowed:
             log_event(logger, "input guardrail refused the question", logging.INFO, reason=verdict.reason)
             return self._finish(self._refusal(INJECTION_REFUSAL_TEXT, verdict.reason or "prompt_injection", [], usage), started)
 
-        owned = await run_in_threadpool(self.db.doc_ids, owner_id)
+        with tel.span("registry_check"):
+            owned = await run_in_threadpool(self.db.doc_ids, owner_id)
         if req.doc_ids and not set(req.doc_ids) <= owned:
             raise NotFound("One or more document ids were not found.")
         if not owned:
@@ -191,12 +195,15 @@ class AskService:
 
         answer, cited = "", []
         for attempt in range(2):
-            res = await self.llm.generate(SYSTEM_PROMPT, prompt)
+            with tel.span("answer", attempt=attempt + 1):
+                res = await self.llm.generate(SYSTEM_PROMPT, prompt)
             usage.input_tokens += res.input_tokens
             usage.output_tokens += res.output_tokens
             raw = res.text.strip()
 
-            if guardrails.is_output_blocked(raw, SYSTEM_PROMPT):
+            with tel.span("output_guardrails"):
+                blocked = guardrails.is_output_blocked(raw, SYSTEM_PROMPT)
+            if blocked:
                 log_event(logger, "output guardrail blocked the answer", logging.WARNING)
                 return self._finish(self._refusal(BLOCKED_TEXT, "output_blocked", result.raw, usage), started)
 
@@ -205,7 +212,9 @@ class AskService:
                 return self._finish(self._refusal(REFUSAL_TEXT, "not_in_documents", result.raw, usage), started)
             if kind == "malformed":
                 continue  # retry once; never show the raw token
-            answer, cited, stripped = parse_citations(raw, valid, self.s.top_k_max)
+            with tel.span("citations"):
+                answer, cited, stripped = parse_citations(raw, valid, self.s.top_k_max)
+                tel.annotate(cited=len(cited), stripped=len(stripped))
             if stripped:
                 log_event(logger, "stripped invalid citations", logging.WARNING, numbers=sorted(set(stripped)))
             if cited:
@@ -224,19 +233,22 @@ class AskService:
         """None = let it through; ``prompt_injection`` / ``jailbreak`` = refuse. It can only block, never release:
         a fooled screen leaves us where we were without it (prompt rules and output checks still apply)."""
         safe = re.sub(r"</?\s*question\s*>", " ", question, flags=re.IGNORECASE)
-        res = await self.llm.generate(SCREEN_SYSTEM, f"<question>\n{safe}\n</question>",
-                                      effort=self.s.screen_reasoning_effort)  # an outage is a 503, like any model call
-        usage.input_tokens += res.input_tokens
-        usage.output_tokens += res.output_tokens
-        word = _norm_refusal(res.text)
-        return {"INJECTION": "prompt_injection", "JAILBREAK": "jailbreak"}.get(word)
+        with tel.span("screen"):
+            res = await self.llm.generate(SCREEN_SYSTEM, f"<question>\n{safe}\n</question>",
+                                          effort=self.s.screen_reasoning_effort)  # an outage is a 503, like any model call
+            usage.input_tokens += res.input_tokens
+            usage.output_tokens += res.output_tokens
+            label = {"INJECTION": "prompt_injection", "JAILBREAK": "jailbreak"}.get(_norm_refusal(res.text))
+            tel.annotate(blocked=label is not None)
+        return label
 
     async def _recheck_allows(self, question: str, usage: Usage) -> bool:
         """True only if the model answers exactly OK. An error, timeout or any other reply keeps the refusal."""
         safe = re.sub(r"</?\s*question\s*>", " ", question, flags=re.IGNORECASE)
         try:
-            res = await self.llm.generate(RECHECK_SYSTEM, f"<question>\n{safe}\n</question>",
-                                          effort=self.s.screen_reasoning_effort)
+            with tel.span("recheck"):
+                res = await self.llm.generate(RECHECK_SYSTEM, f"<question>\n{safe}\n</question>",
+                                              effort=self.s.screen_reasoning_effort)
         except UpstreamUnavailable:
             log_event(logger, "guardrail recheck unavailable; keeping the refusal", logging.WARNING)
             return False
@@ -248,4 +260,6 @@ class AskService:
     def _finish(resp: AskResponse, started: float) -> AskResponse:
         resp.latency_ms = int((time.monotonic() - started) * 1000)
         resp.request_id = request_id_var.get()
+        tel.annotate_root(outcome="refused" if resp.refused else "answered", reason=resp.reason or "",
+                          num_retrieved=resp.num_retrieved)
         return resp

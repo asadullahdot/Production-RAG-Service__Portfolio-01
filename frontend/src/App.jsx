@@ -3,6 +3,7 @@ import { api, loadSession, saveSession, setUnauthorizedHandler } from "./api.js"
 import AuthForm from "./components/AuthForm.jsx";
 import Documents from "./components/Documents.jsx";
 import Chat from "./components/Chat.jsx";
+import Monitoring from "./components/Monitoring.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import Logo from "./components/Logo.jsx";
 import { NAME, SUBTITLE } from "./brand.js";
@@ -132,10 +133,26 @@ function Workspace({ token, fileTypes, notify }) {
 
   const toggle = (id) => setExcluded((old) => { const s = new Set(old); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
+  const [view, setView] = useState("chat");  // "chat" | "monitoring"
+  const [traceRequest, setTraceRequest] = useState(null);  // a new object per click, so the same trace can be opened again
+  const openTrace = (id) => { setTraceRequest({ id }); setView("monitoring"); };
+
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[22rem_minmax(0,1fr)] md:items-start">
-      <Documents docs={docs} loading={loading} fileTypes={fileTypes} token={token} excluded={excluded} onToggle={toggle} onChanged={loadDocs} notify={notify} />
-      <Chat docs={docs} loading={loading} excluded={excluded} token={token} />
-    </div>
+    <>
+      <div role="tablist" aria-label="View" className="mx-auto mb-4 flex w-fit gap-1 rounded-full bg-white/70 p-1 shadow-md shadow-indigo-500/10 dark:bg-slate-900/70">
+        {[["chat", "Chat"], ["monitoring", "Monitoring"]].map(([value, label]) => (
+          <button key={value} type="button" role="tab" aria-selected={view === value} onClick={() => setView(value)}
+            className={`min-h-11 rounded-full px-5 font-medium transition ${view === value ? "bg-linear-to-br from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/30 dark:from-indigo-500 dark:to-violet-500" : "text-slate-600 dark:text-slate-300"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {/* Chat stays mounted (hidden) while Monitoring is open, so the conversation is not lost. */}
+      <div className={view === "chat" ? "grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[22rem_minmax(0,1fr)] md:items-start" : "hidden"}>
+        <Documents docs={docs} loading={loading} fileTypes={fileTypes} token={token} excluded={excluded} onToggle={toggle} onChanged={loadDocs} notify={notify} />
+        <Chat docs={docs} loading={loading} excluded={excluded} token={token} onOpenTrace={openTrace} />
+      </div>
+      {view === "monitoring" && <Monitoring token={token} initialTrace={traceRequest} onGoChat={() => setView("chat")} />}
+    </>
   );
 }
