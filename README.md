@@ -14,7 +14,7 @@ Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-0
 - Ask questions: answer with `[n]` citations linked to the retrieved chunks, `num_retrieved`, per-chunk similarity score; refusals are HTTP 200 with `refused=true` and a `reason`.
 - Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.
 - One error shape for every failure, `X-Request-ID` on every response, JSON logs with secret redaction, in-memory rate limit (429), bounded retries/timeouts/concurrency for every OpenAI call (upstream failure → 503).
-- Optional JWT auth (`AUTH_ENABLED=true`): Argon2id passwords, HS256 tokens, per-user isolation. With auth off the app uses one default owner.
+- **Login (B1, on by default):** sign up and log in on the first screen; passwords are stored as Argon2id hashes; login returns a signed JWT (HS256, 60 minutes); every document and question endpoint needs it; each user can only see, search and delete their own documents. `JWT_SECRET` (32+ random characters) is required: generate one with `python -c "import secrets; print(secrets.token_hex(32))"`. Set `AUTH_ENABLED=false` for a no-login demo where everyone shares one owner.
 - Responsive plain HTML/CSS/JS frontend (phone → desktop), all text rendered via `textContent`.
 
 ## Setup (Windows PowerShell)
@@ -65,7 +65,7 @@ Re-ingests the corpus per chunking config (A 1000/200, B 500/100) into an isolat
 | `DELETE /documents/{doc_id}` | delete document and its vectors | 204 · 404 · 503 |
 | `POST /ask` | answer a question (refusals are 200) | 200 · 404 · 422 · 429 · 503 |
 | `GET /health` | liveness + dependencies, `auth_enabled` | 200 · 503 |
-| `POST /auth/signup`, `POST /auth/login` | B1 only (`AUTH_ENABLED=true`) | 201/200 · 401 · 403 · 409 · 422 · 429 |
+| `POST /auth/signup`, `POST /auth/login`, `GET /auth/me` | B1 (login form for Swagger's Authorize button; `me` checks the token) | 201/200 · 401 · 403 · 409 · 422 · 429 |
 
 Errors: `{"error": {"code", "message", "request_id", "details"?}}`. Full contract: [PLAN.md §7](PLAN.md).
 

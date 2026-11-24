@@ -185,6 +185,9 @@
   // ---------------------------------------------------------------- start
   (async () => {
     try { const h = await fetch("/health"); const body = await h.json(); state.authEnabled = body.auth_enabled === true; showFileTypes(body.file_types); } catch (_) {}
+    if (state.authEnabled && state.token) {  // a stored login may have expired: api() clears it on 401 and shows the sign-in form
+      try { const me = await api("/auth/me"); state.email = me.email; } catch (_) {}
+    }
     render();
   })();
 })();
