@@ -118,3 +118,81 @@ def test_rate_limit_is_keyed_per_user(tmp_path):
     signup(c, "b@example.com", "correct-horse-1")
     # /auth/* is keyed by IP: 5 requests above already exceed the limit of 2 for this IP
     assert signup(c, "c@example.com").status_code == 429
+
+
+# ---- B1 hardening (24 Nov 2026) -------------------------------------------------------------------------------
+def test_auth_is_on_by_default():
+    from app.config import Settings
+    assert Settings(_env_file=None).auth_enabled is True
+
+
+def test_me_returns_the_logged_in_user_and_needs_a_token(aenv):
+    c = aenv.client
+    assert c.get("/auth/me").status_code == 401
+    signup(c, "Me@Example.com")
+    me = c.get("/auth/me", headers=hdr(login(c, "me@example.com").json()["access_token"])).json()
+    assert me["email"] == "me@example.com" and me["user_id"]
+
+
+def test_email_is_case_insensitive(aenv):
+    c = aenv.client
+    assert signup(c, "Mixed.Case@Example.com").status_code == 201
+    assert signup(c, "mixed.case@example.com").status_code == 409           # same address
+    assert login(c, "MIXED.CASE@EXAMPLE.COM").status_code == 200
+
+
+def test_search_is_isolated_per_user_at_the_vector_level(aenv):
+    """B has documents of their own, so the question really reaches Qdrant; A's chunks must still never come back."""
+    c = aenv.client
+    signup(c, "a@example.com"); signup(c, "b@example.com")
+    ta = hdr(login(c, "a@example.com").json()["access_token"])
+    tb = hdr(login(c, "b@example.com").json()["access_token"])
+    doc_a = c.post("/documents", files={"file": ("a.pdf", PDF, "application/pdf")}, headers=ta).json()
+    other = make_pdf(["Shipping takes five business days for domestic orders and two weeks for international orders."])
+    doc_b = c.post("/documents", files={"file": ("b.pdf", other, "application/pdf")}, headers=tb).json()
+    body = c.post("/ask", json={"question": "What is the refund policy for returns within thirty days?"}, headers=tb).json()
+    assert all(ch["doc_id"] == doc_b["doc_id"] for ch in body["retrieved_chunks"])           # only B's own chunks
+    assert doc_a["doc_id"] not in str(body) and "refund policy allows" not in str(body)
+    assert aenv.count(aenv.container.db.get_user_by_email("a@example.com")["user_id"]) >= 1
+    assert aenv.count(aenv.container.db.get_user_by_email("b@example.com")["user_id"]) >= 1
+    # each user's own question reaches only their own document
+    own = c.post("/ask", json={"question": "What is the refund policy for returns within thirty days?"}, headers=ta).json()
+    assert own["refused"] is False and {ch["doc_id"] for ch in own["retrieved_chunks"]} == {doc_a["doc_id"]}
+
+
+def test_deleting_one_users_copy_leaves_the_other_users_copy(aenv):
+    c = aenv.client
+    signup(c, "a@example.com"); signup(c, "b@example.com")
+    ta = hdr(login(c, "a@example.com").json()["access_token"])
+    tb = hdr(login(c, "b@example.com").json()["access_token"])
+    files = {"file": ("policy.pdf", PDF, "application/pdf")}
+    da = c.post("/documents", files=files, headers=ta).json()
+    db = c.post("/documents", files=files, headers=tb).json()
+    assert da["doc_id"] != db["doc_id"] and da["file_hash"] == db["file_hash"]
+    assert c.delete(f"/documents/{da['doc_id']}", headers=ta).status_code == 204
+    assert [d["doc_id"] for d in c.get("/documents", headers=tb).json()["documents"]] == [db["doc_id"]]
+    assert c.post("/ask", json={"question": "refund policy returns"}, headers=tb).json()["refused"] is False
+
+
+def test_a_token_survives_only_while_the_account_exists(aenv):
+    c = aenv.client
+    signup(c)
+    token = hdr(login(c).json()["access_token"])
+    assert c.get("/documents", headers=token).status_code == 200
+    aenv.container.db._run("DELETE FROM users", (), write=True)
+    assert c.get("/documents", headers=token).status_code == 401
+
+
+def test_upload_without_a_token_is_401_and_nothing_is_stored(aenv):
+    r = aenv.client.post("/documents", files={"file": ("policy.pdf", PDF, "application/pdf")})
+    assert r.status_code == 401 and r.json()["error"]["code"] == "unauthorized"
+    assert aenv.container.db.doc_ids("local") == set()
+
+
+def test_login_failures_do_not_reveal_whether_the_email_exists(aenv):
+    c = aenv.client
+    signup(c)
+    wrong_pw = login(c, pw="wrong-password-1")
+    unknown = login(c, email="ghost@example.com")
+    assert wrong_pw.status_code == unknown.status_code == 401
+    assert wrong_pw.json()["error"]["message"] == unknown.json()["error"]["message"]

@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
 
     # auth (B1)
-    auth_enabled: bool = False
+    auth_enabled: bool = True  # B1 is on: every document and question endpoint needs a token (set false for a no-login demo)
     default_owner_id: str = "local"
     jwt_expire_minutes: int = 60
     signup_enabled: bool = True

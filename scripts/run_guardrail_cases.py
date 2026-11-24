@@ -39,6 +39,12 @@ def run_http(args, cases: list[dict]) -> list[bool]:
     import httpx
 
     headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
+    if not args.token:  # the server may require login (B1): create/log in a demo account
+        with httpx.Client(base_url=args.base_url, timeout=60) as probe:
+            if probe.get("/health").json().get("auth_enabled"):
+                probe.post("/auth/signup", json={"email": args.email, "password": args.password})  # 409 if it already exists
+                tok = probe.post("/auth/login", data={"username": args.email, "password": args.password}).json()
+                headers = {"Authorization": f"Bearer {tok['access_token']}"}
     results = []
     with httpx.Client(base_url=args.base_url, headers=headers, timeout=60) as client:
         docs = client.get("/documents")
@@ -90,6 +96,8 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--base-url", default="http://127.0.0.1:8000")
     p.add_argument("--token", default="")
+    p.add_argument("--email", default="guardrail-demo@example.com", help="demo account used when the server requires login and no --token is given")
+    p.add_argument("--password", default="guardrail-demo-pass-1")
     p.add_argument("--mocked", action="store_true", help="also run mocked-LLM output guardrail cases")
     p.add_argument("--cases", default=str(ROOT / "evals" / "guardrail_cases.json"))
     args = p.parse_args()

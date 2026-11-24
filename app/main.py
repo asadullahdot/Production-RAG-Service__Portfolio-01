@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -160,6 +161,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             c: Container = request.app.state.container
             token = await auth.login(c.db, c.settings, form.username, form.password)
             return TokenOut(access_token=token)
+
+    if settings.auth_enabled:
+        @app.get("/auth/me", response_model=UserOut, tags=["auth"], responses=ERRORS,
+                 summary="Who am I? (checks that the token is still valid)")
+        async def me(request: Request, owner_id: str = Depends(owner)):
+            c: Container = request.app.state.container
+            user = await run_in_threadpool(c.db.get_user, owner_id)
+            return UserOut(user_id=user["user_id"], email=user["email"])
 
     @app.post("/documents", response_model=DocumentOut, status_code=201, tags=["documents"], responses=ERRORS,
               summary="Upload and ingest a document",
