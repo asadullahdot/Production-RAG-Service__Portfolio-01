@@ -25,6 +25,35 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_owner_hash ON documents(owner_id, file_hash);
 CREATE INDEX IF NOT EXISTS ix_documents_owner ON documents(owner_id);
+CREATE TABLE IF NOT EXISTS requests (
+    request_id       TEXT PRIMARY KEY,
+    ts               TEXT NOT NULL,
+    owner_id         TEXT,
+    route            TEXT NOT NULL,
+    method           TEXT NOT NULL,
+    status           INTEGER NOT NULL,
+    latency_ms       REAL NOT NULL,
+    outcome          TEXT NOT NULL,
+    reason           TEXT,
+    error_code       TEXT,
+    num_retrieved    INTEGER,
+    input_tokens     INTEGER NOT NULL DEFAULT 0,
+    output_tokens    INTEGER NOT NULL DEFAULT 0,
+    embed_tokens_est INTEGER NOT NULL DEFAULT 0,
+    cost_usd         REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_requests_owner_ts ON requests(owner_id, ts);
+CREATE TABLE IF NOT EXISTS spans (
+    request_id  TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    depth       INTEGER NOT NULL,
+    offset_ms   REAL NOT NULL,
+    duration_ms REAL NOT NULL,
+    status      TEXT NOT NULL,
+    attrs       TEXT NOT NULL,
+    PRIMARY KEY (request_id, seq)
+);
 CREATE TABLE IF NOT EXISTS users (
     user_id       TEXT PRIMARY KEY,
     email         TEXT NOT NULL UNIQUE,
@@ -108,6 +137,52 @@ class Database:
             cur = self._conn.execute("DELETE FROM documents WHERE owner_id=? AND doc_id=?", (owner_id, doc_id))
             self._conn.commit()
             return cur.rowcount > 0
+
+    # ---- traces and monitoring (B3)
+    _REQUEST_COLUMNS = ("request_id", "ts", "owner_id", "route", "method", "status", "latency_ms", "outcome", "reason",
+                        "error_code", "num_retrieved", "input_tokens", "output_tokens", "embed_tokens_est", "cost_usd")
+
+    def add_trace(self, row: dict, spans: list[dict]) -> None:
+        cols = self._REQUEST_COLUMNS
+        with self._lock:
+            self._conn.execute("DELETE FROM spans WHERE request_id=?", (row["request_id"],))  # a client may reuse a request id
+            self._conn.execute(f"INSERT OR REPLACE INTO requests ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                               tuple(row.get(c) for c in cols))
+            self._conn.executemany(
+                "INSERT INTO spans (request_id, seq, name, depth, offset_ms, duration_ms, status, attrs) VALUES (?,?,?,?,?,?,?,?)",
+                [(row["request_id"], s["seq"], s["name"], s["depth"], s["offset_ms"], s["duration_ms"], s["status"], s["attrs"])
+                 for s in spans])
+            self._conn.commit()
+
+    def prune_traces(self, keep: int) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM requests WHERE request_id IN "
+                               "(SELECT request_id FROM requests ORDER BY ts DESC LIMIT -1 OFFSET ?)", (keep,))
+            self._conn.execute("DELETE FROM spans WHERE request_id NOT IN (SELECT request_id FROM requests)")
+            self._conn.commit()
+
+    def trace_requests(self, owner_id: str, since: str | None = None, limit: int | None = None) -> list[dict]:
+        """The owner's traced requests, newest first."""
+        sql = "SELECT * FROM requests WHERE owner_id=?" + (" AND ts>=?" if since else "") + " ORDER BY ts DESC"
+        params: tuple = (owner_id, since) if since else (owner_id,)
+        if limit:
+            sql += " LIMIT ?"
+            params += (limit,)
+        return [dict(r) for r in self._run(sql, params)]
+
+    def trace_step_rows(self, owner_id: str, since: str | None = None) -> list[dict]:
+        """Step spans (depth 1) of the owner's requests, for per-step latency."""
+        sql = ("SELECT r.route AS route, s.name AS name, s.duration_ms AS duration_ms, s.offset_ms AS offset_ms, s.status AS status "
+               "FROM spans s JOIN requests r ON r.request_id = s.request_id WHERE r.owner_id=? AND s.depth=1"
+               + (" AND r.ts>=?" if since else ""))
+        return [dict(r) for r in self._run(sql, (owner_id, since) if since else (owner_id,))]
+
+    def get_trace(self, owner_id: str, request_id: str) -> tuple[dict, list[dict]] | None:
+        rows = self._run("SELECT * FROM requests WHERE owner_id=? AND request_id=?", (owner_id, request_id))
+        if not rows:
+            return None
+        spans = self._run("SELECT * FROM spans WHERE request_id=? ORDER BY seq", (request_id,))
+        return dict(rows[0]), [dict(s) for s in spans]
 
     # ---- users (B1)
     def create_user(self, email: str, password_hash: str) -> dict:

@@ -10,6 +10,7 @@ import math
 import re
 from collections import deque
 
+from app import telemetry as tel
 from app.llm_guard import LLMResult
 
 DIM = 256
@@ -40,17 +41,23 @@ class FakeOpenAI:
     async def embed(self, texts):
         from app.errors import UpstreamUnavailable
         self.embed_calls += 1
-        if self.fail_embed:
-            raise UpstreamUnavailable()
-        return [embed_text(t) for t in texts]
+        with tel.span("embed", texts=len(texts), **{"embed.tokens_est": sum(len(t) for t in texts) // 4}):
+            if self.fail_embed:
+                raise UpstreamUnavailable()
+            return [embed_text(t) for t in texts]
 
     async def generate(self, system, user, effort=None):
         self.llm_calls += 1
         self.prompts.append((system, user))
-        if self.script:
-            return LLMResult(text=self.script.popleft(), input_tokens=10, output_tokens=5)
-        m = re.search(r"\[(\d+)\]", user)
-        n = m.group(1) if m else "1"
-        return LLMResult(text=f"According to the documents, this is covered. [{n}]", input_tokens=10, output_tokens=5)
+        with tel.span("llm.generate", model="fake"):
+            if self.script:
+                result = LLMResult(text=self.script.popleft(), input_tokens=10, output_tokens=5)
+            else:
+                m = re.search(r"\[(\d+)\]", user)
+                n = m.group(1) if m else "1"
+                result = LLMResult(text=f"According to the documents, this is covered. [{n}]", input_tokens=10, output_tokens=5)
+            tel.add("tokens.input", result.input_tokens)
+            tel.add("tokens.output", result.output_tokens)
+            return result
 
     judge = generate

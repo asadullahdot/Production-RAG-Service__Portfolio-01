@@ -8,6 +8,7 @@ from app.db import Database
 from app.generation import AskService
 from app.ingestion.service import IngestionService
 from app.ingestion.store import QdrantStore, VectorStore
+from app import telemetry
 from app.llm_guard import LLMGuard
 from app.ratelimit import RateLimiter
 
@@ -21,6 +22,7 @@ class Container:
     ingestion: IngestionService
     ask: AskService
     limiter: RateLimiter
+    telemetry: telemetry.Telemetry | None = None
 
 
 def build_container(settings: Settings, *, store: VectorStore | None = None, openai_client=None,
@@ -29,9 +31,11 @@ def build_container(settings: Settings, *, store: VectorStore | None = None, ope
     db = db or Database(settings.sqlite_path, settings.db_timeout_s)
     store = store or QdrantStore(settings)
     openai_client = openai_client or LLMGuard(settings)
+    tel = telemetry.Telemetry(settings, db) if settings.telemetry_enabled else None
+    telemetry.configure(tel)
     return Container(
         settings=settings, db=db, store=store, openai=openai_client,
         ingestion=IngestionService(settings, db, store, openai_client),
         ask=AskService(settings, db, store, openai_client),
-        limiter=RateLimiter(settings.rate_limit_per_min),
+        limiter=RateLimiter(settings.rate_limit_per_min), telemetry=tel,
     )

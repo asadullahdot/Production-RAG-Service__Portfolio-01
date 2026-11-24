@@ -113,6 +113,13 @@ class Settings(BaseSettings):
     demo_fault: str = "none"  # none | llm_timeout | llm_429 | embed_timeout | embed_429 | vector_db_down (demo only)
     request_deadline_s: float = 60.0
 
+    # monitoring (B3). Prices are USD per 1M tokens from the OpenAI model pages (checked 25 Nov 2026): used only for cost ESTIMATES.
+    telemetry_enabled: bool = True
+    trace_keep: int = Field(default=5000, ge=100)  # newest traced requests kept in SQLite
+    llm_price_in_per_m: float = 0.10   # gpt-6-luna input
+    llm_price_out_per_m: float = 0.50  # gpt-6-luna output
+    embed_price_per_m: float = 0.02    # text-embedding-3-small
+
     # models
     llm_model: str = "gpt-6-luna"
     judge_model: str = "gpt-6.1-terra"

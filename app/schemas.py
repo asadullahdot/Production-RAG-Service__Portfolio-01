@@ -104,3 +104,105 @@ class HealthOut(BaseModel):
     qdrant: bool
     auth_enabled: bool
     file_types: list[str] = []  # upload types the server accepts, for the upload picker
+
+
+# ---- monitoring (B3)
+class LatencyStats(BaseModel):
+    count: int
+    p50: float | None = None
+    p95: float | None = None
+    mean: float | None = None
+    max: float | None = None
+
+
+class StepStat(BaseModel):
+    name: str
+    count: int
+    p50: float | None = None
+    p95: float | None = None
+    mean: float | None = None
+    errors: int = 0
+
+
+class SeriesPoint(BaseModel):
+    t: str
+    requests: int
+    errors: int
+
+
+class RequestCounts(BaseModel):
+    total: int
+    server_errors: int
+    client_errors: int
+    rate_limited: int
+    error_rate: float | None = None
+    by_route: dict[str, int] = {}
+
+
+class QuestionStats(BaseModel):
+    count: int
+    answered: int
+    refused: int
+    refusal_rate: float | None = None
+    refusal_reasons: dict[str, int] = {}
+    latency_ms: LatencyStats
+
+
+class TokenStats(BaseModel):
+    input: int
+    output: int
+    embedding_estimated: int
+    per_question: float | None = None
+
+
+class CostStats(BaseModel):
+    total_usd: float
+    per_question_usd: float | None = None
+    estimate: bool = True
+
+
+class MetricsSummary(BaseModel):
+    window: str
+    generated_at: str
+    bucket_seconds: int
+    requests: RequestCounts
+    questions: QuestionStats
+    tokens: TokenStats
+    cost: CostStats
+    steps: dict[str, list[StepStat]]
+    series: list[SeriesPoint]
+
+
+class RequestItem(BaseModel):
+    request_id: str
+    ts: str
+    route: str
+    status: int
+    latency_ms: float
+    outcome: str
+    reason: str | None = None
+    error_code: str | None = None
+    num_retrieved: int | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    embed_tokens_est: int = 0
+    cost_usd: float = 0
+
+
+class RequestList(BaseModel):
+    requests: list[RequestItem]
+
+
+class SpanOut(BaseModel):
+    seq: int
+    name: str
+    depth: int
+    offset_ms: float
+    duration_ms: float
+    status: str
+    attrs: dict = {}
+
+
+class TraceOut(BaseModel):
+    request: RequestItem
+    spans: list[SpanOut]
