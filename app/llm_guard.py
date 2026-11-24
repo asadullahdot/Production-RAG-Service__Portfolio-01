@@ -142,6 +142,10 @@ class LLMGuard:
             raise _Transient("demo timeout")
         if service in ("llm", "judge") and fault == "llm_429":
             raise _Transient("demo rate limit", retry_after=0.5)
+        if service == "embed" and fault == "embed_timeout":
+            raise _Transient("demo timeout")
+        if service == "embed" and fault == "embed_429":
+            raise _Transient("demo rate limit", retry_after=0.5)
 
     async def _with_policy(self, service: str, call):
         sem = self._sems[service]

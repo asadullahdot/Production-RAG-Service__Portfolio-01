@@ -15,7 +15,7 @@ from pathlib import Path
 from app.config import Settings
 from app.llm_guard import LLMResult
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"  # v2: rule 6 clarified (document passwords are content, not service secrets)
 CACHE_DIR = Path(__file__).parent / "results" / "cache"
 
 
