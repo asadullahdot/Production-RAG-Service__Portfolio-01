@@ -1,6 +1,6 @@
 """Disk cache for embeddings, generations and judge calls (PLAN.md §12 Reproducibility).
 
-Key = hash of (kind, model id, effort/temperature, prompt version, config id, exact input). A changed
+Key = hash of (kind, model id, reasoning effort, prompt version, config id, exact input). A changed
 prompt, model or chunking can never reuse a stale answer. Entries keep the ORIGINAL latency and token
 usage so reported latency/cost stay real on cached reruns.
 """
@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from app.config import Settings
-from app.openai_client import LLMResult
+from app.llm_guard import LLMResult
 
 PROMPT_VERSION = "v1"
 CACHE_DIR = Path(__file__).parent / "results" / "cache"
@@ -42,7 +42,7 @@ class DiskCache:
 
 
 class CachedOpenAI:
-    """Same surface as ``OpenAIClient`` (embed / generate / judge) with a disk cache in front.
+    """Same surface as ``LLMGuard`` (embed / generate / judge) with a disk cache in front.
 
     ``config_id`` separates Config A from Config B. Per-call stats (latency, tokens, cached flag) are collected
     in ``self.calls`` so the harness can attribute them to questions.
@@ -68,7 +68,7 @@ class CachedOpenAI:
         return out  # type: ignore[return-value]
 
     async def _llm(self, kind: str, model: str, effort: str, system: str, user: str) -> LLMResult:
-        key = _key(kind, model, effort, str(self.s.llm_temperature), PROMPT_VERSION, self.config_id, system, user)
+        key = _key(kind, model, effort, PROMPT_VERSION, self.config_id, system, user)
         hit = self.cache.get(key)
         if hit:
             self.last = {"latency_ms": hit["latency_ms"], "cached": True}

@@ -80,7 +80,6 @@ class Settings(BaseSettings):
     embedding_dim: int = 1536
     llm_reasoning_effort: str = "low"
     llm_max_output_tokens: int = 4000
-    llm_temperature: float | None = None
     judge_reasoning_effort: str = "medium"
 
     # pinecone

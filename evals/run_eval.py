@@ -19,7 +19,7 @@ from app.container import build_container
 from app.db import Database
 from app.ingestion.service import IngestionService
 from app.ingestion.store import PineconeStore, VectorStore
-from app.openai_client import OpenAIClient
+from app.llm_guard import LLMGuard
 from app.retrieval import retrieve
 from app.schemas import AskRequest
 from evals import metrics
@@ -180,7 +180,7 @@ async def main_async(args) -> int:
         return 2
     questions = load_golden(golden_path)
     cache = DiskCache()
-    inner = OpenAIClient(settings)
+    inner = LLMGuard(settings)
     store = PineconeStore(settings)
     await store.ensure_index()
     work_dir = ROOT / "data"

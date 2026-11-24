@@ -18,7 +18,7 @@ from app.config import Settings, get_settings
 from app.container import Container, build_container
 from app.errors import AppError, FileTooLarge, RateLimited, UpstreamUnavailable
 from app.logging_setup import log_event, new_request_id, request_id_var, setup_logging
-from app.openai_client import deadline_var
+from app.llm_guard import deadline_var
 from app.schemas import (AskRequest, AskResponse, DocumentList, DocumentOut, ErrorResponse, HealthOut,
                          SignupRequest, TokenOut, UserOut)
 

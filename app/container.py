@@ -8,7 +8,7 @@ from app.db import Database
 from app.generation import AskService
 from app.ingestion.service import IngestionService
 from app.ingestion.store import PineconeStore, VectorStore
-from app.openai_client import OpenAIClient
+from app.llm_guard import LLMGuard
 from app.ratelimit import RateLimiter
 
 
@@ -17,7 +17,7 @@ class Container:
     settings: Settings
     db: Database
     store: VectorStore
-    openai: OpenAIClient
+    openai: LLMGuard
     ingestion: IngestionService
     ask: AskService
     limiter: RateLimiter
@@ -28,7 +28,7 @@ def build_container(settings: Settings, *, store: VectorStore | None = None, ope
     """Tests inject an in-memory store and a fake OpenAI client; production uses Pinecone and OpenAI."""
     db = db or Database(settings.sqlite_path, settings.db_timeout_s)
     store = store or PineconeStore(settings)
-    openai_client = openai_client or OpenAIClient(settings)
+    openai_client = openai_client or LLMGuard(settings)
     return Container(
         settings=settings, db=db, store=store, openai=openai_client,
         ingestion=IngestionService(settings, db, store, openai_client),

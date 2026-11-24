@@ -7,7 +7,7 @@ import pytest
 
 from app.config import Settings
 from app.ingestion.store import InMemoryStore
-from app.openai_client import LLMResult
+from app.llm_guard import LLMResult
 from evals import metrics
 from evals.cache import CachedOpenAI, DiskCache
 from evals.judge import parse_verdict

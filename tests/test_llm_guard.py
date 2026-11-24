@@ -1,17 +1,17 @@
-"""Retry / backoff / Retry-After / quota / deadline behaviour of the single OpenAI wrapper (PLAN.md §8.3)."""
+"""Retry / backoff / Retry-After / quota / deadline behaviour of the single LLM guard (PLAN.md §8.3)."""
 from __future__ import annotations
 
 import asyncio
 import time
-from types import SimpleNamespace
 
 import httpx
 import openai
 import pytest
+from langchain_core.messages import AIMessage
 
 from app.config import Settings
 from app.errors import UpstreamUnavailable
-from app.openai_client import OpenAIClient, deadline_var
+from app.llm_guard import LLMGuard, deadline_var
 
 
 def _resp(status, headers=None):
@@ -30,31 +30,47 @@ def server_error():
     return openai.InternalServerError("boom", response=_resp(500), body=None)
 
 
-class FakeSDK:
-    """Mimics ``AsyncOpenAI``: ``responses.create`` / ``embeddings.create`` driven by a list of outcomes."""
+class FakeChat:
+    """Stands in for ``ChatOpenAI``: ``ainvoke`` is driven by a shared list of outcomes."""
+
+    def __init__(self, owner):
+        self.owner = owner
+
+    async def ainvoke(self, messages):
+        return await self.owner.next()
+
+
+class FakeEmbeddings:
+    def __init__(self, owner):
+        self.owner = owner
+
+    async def aembed_documents(self, texts):
+        return await self.owner.next()
+
+
+class Script:
+    """Outcomes (messages or exceptions) handed out one per model call; counts the calls."""
 
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
         self.calls = 0
-        self.responses = SimpleNamespace(create=self._create)
-        self.embeddings = SimpleNamespace(create=self._embed)
+        self.caps: list[int] = []
 
-    async def _next(self):
+    async def next(self):
         self.calls += 1
         out = self.outcomes.pop(0)
         if isinstance(out, Exception):
             raise out
         return out
 
-    async def _create(self, **kw):
-        return await self._next()
-
-    async def _embed(self, **kw):
-        return await self._next()
+    def chat_factory(self, model, effort, max_tokens):
+        self.caps.append(max_tokens)
+        return FakeChat(self)
 
 
 def ok_response(text="hello", status="completed"):
-    return SimpleNamespace(output_text=text, status=status, usage=SimpleNamespace(input_tokens=3, output_tokens=2))
+    return AIMessage(content=[{"type": "text", "text": text}], response_metadata={"status": status},
+                     usage_metadata={"input_tokens": 3, "output_tokens": 2, "total_tokens": 5})
 
 
 def make(outcomes, **kw):
@@ -65,8 +81,10 @@ def make(outcomes, **kw):
 
     base = dict(max_retries=3, retry_backoff_s=1.0, retry_backoff_max_s=8.0, openai_api_key="k")
     base.update(kw)
-    sdk = FakeSDK(outcomes)
-    return OpenAIClient(Settings(_env_file=None, **base), client=sdk, sleep=fake_sleep), sdk, sleeps
+    script = Script(outcomes)
+    guard = LLMGuard(Settings(_env_file=None, **base), embeddings=FakeEmbeddings(script),
+                     chat_factory=script.chat_factory, sleep=fake_sleep)
+    return guard, script, sleeps
 
 
 def run(coro):
@@ -139,10 +157,16 @@ def test_request_deadline_stops_retrying():
 
 
 def test_embeddings_and_demo_fault():
-    emb = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
-    client, _, _ = make([emb])
+    client, _, _ = make([[[0.1, 0.2]]])
     assert run(client.embed(["a"])) == [[0.1, 0.2]]
     client, sdk, sleeps = make([ok_response()], demo_fault="llm_429", max_retries=2)
     with pytest.raises(UpstreamUnavailable):
         run(client.generate("s", "u"))
     assert sdk.calls == 0 and len(sleeps) == 2  # fault injected before the SDK call; retried twice, then 503
+
+
+def test_incomplete_retry_doubles_the_output_cap_and_no_temperature_setting():
+    client, script, _ = make([ok_response("cut", "incomplete"), ok_response("full")], llm_max_output_tokens=1000)
+    assert run(client.generate("s", "u")).text == "full"
+    assert script.caps == [1000, 2000]
+    assert not hasattr(client.s, "llm_temperature")  # gpt-6-luna / gpt-6.1-terra reject temperature
