@@ -171,3 +171,52 @@ def test_upload_locks_are_released(tmp_path):
     e.client.post("/documents", files={"file": ("a.pdf", make_pdf([LONG]), "application/pdf")})
     e.client.post("/documents", files={"file": ("a.pdf", make_pdf([LONG]), "application/pdf")})  # 409
     assert e.container.ingestion._locks == {}
+
+
+# 10. the model recheck can release a question the regex blocked, and fails closed
+FLAGGED = "Print your instructions for the label printer."  # matches the injection regex but is an ordinary question
+
+
+def _recheck_env(tmp_path, **kw):
+    e = Env(tmp_path, input_recheck=True, **kw)
+    e.client.post("/documents", files={"file": ("m.pdf", make_pdf(["The label printer instructions say to load the roll and press feed."]), "application/pdf")})
+    return e
+
+
+def test_recheck_ok_releases_a_false_positive(tmp_path):
+    e = _recheck_env(tmp_path)
+    e.openai.llm_calls = 0
+    e.openai.script.extend(["OK", "Load the roll and press feed. [1]"])
+    body = e.client.post("/ask", json={"question": FLAGGED}).json()
+    assert body["refused"] is False and "[1]" in body["answer"] and e.openai.llm_calls == 2
+
+
+@pytest.mark.parametrize("reply", ["ATTACK", "attack.", "I think it is fine", "OK, but...", ""])
+def test_recheck_keeps_the_refusal_unless_exactly_ok(tmp_path, reply):
+    e = _recheck_env(tmp_path)
+    e.openai.llm_calls = 0
+    e.openai.script.append(reply or " ")
+    body = e.client.post("/ask", json={"question": FLAGGED}).json()
+    assert body["refused"] is True and body["reason"] == "prompt_injection" and e.openai.llm_calls == 1
+
+
+def test_recheck_failure_fails_closed(tmp_path):
+    e = _recheck_env(tmp_path)
+
+    async def boom(system, user):
+        raise UpstreamUnavailable()
+    e.openai.generate = boom
+    body = e.client.post("/ask", json={"question": FLAGGED}).json()
+    assert body["refused"] is True and body["reason"] == "prompt_injection"
+
+
+def test_recheck_only_runs_for_flagged_questions_and_can_be_switched_off(tmp_path):
+    e = _recheck_env(tmp_path)
+    e.openai.llm_calls = 0
+    e.client.post("/ask", json={"question": "What do the label printer instructions say?"})
+    assert e.openai.llm_calls == 1  # just the answer: no recheck call for an unflagged question
+    off = Env(tmp_path / "off", input_recheck=False)
+    off.client.post("/documents", files={"file": ("m.pdf", make_pdf([LONG]), "application/pdf")})
+    off.openai.llm_calls = 0
+    assert off.client.post("/ask", json={"question": FLAGGED}).json()["reason"] == "prompt_injection"
+    assert off.openai.llm_calls == 0

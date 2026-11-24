@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     # general
     env: str = "dev"
     behind_proxy: bool = False
+    input_recheck: bool = True  # a model double-checks questions the regex guardrail blocked (releases false positives)
     trusted_proxies: int = Field(default=1, ge=1)  # proxies in front of us; the client IP is that many entries from the right of X-Forwarded-For
     demo_fault: str = "none"  # none | llm_timeout | llm_429 | vector_db_down
     request_deadline_s: float = 60.0

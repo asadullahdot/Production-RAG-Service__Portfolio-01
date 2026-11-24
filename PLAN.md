@@ -96,7 +96,7 @@ flowchart TD
   UI[POST /ask] --> RL[Rate limit 429]
   RL --> AU[JWT 401, skipped when auth is off]
   AU --> V[Schema validation 422]
-  V --> IG[Input guardrails: injection / jailbreak]
+  V --> IG[Input guardrails: regex, then a model recheck of anything it blocked]
   IG --> EMPTY{Owner has documents?}
   EMPTY -->|no| R0[200 refused: no_documents]
   EMPTY -->|yes| EQ[Embed query]
@@ -194,7 +194,7 @@ Run: `uvicorn app.main:app`. Evals call the services directly with internal owne
 | Group | Variables (defaults) | Notes |
 |---|---|---|
 | Secrets | `OPENAI_API_KEY`, `QDRANT_API_KEY`, `JWT_SECRET` | never logged. `JWT_SECRET` ≥ 32 random chars, checked at startup when auth is on |
-| Mode | `AUTH_ENABLED` (false), `DEFAULT_OWNER_ID` (local), `ENV` (dev \| production), `BEHIND_PROXY` (false) | production forbids `DEMO_FAULT` and hides stack details; `BEHIND_PROXY` reads `X-Forwarded-For` for the limiter |
+| Mode | `INPUT_RECHECK` (true), `AUTH_ENABLED` (false), `DEFAULT_OWNER_ID` (local), `ENV` (dev \| production), `BEHIND_PROXY` (false) | production forbids `DEMO_FAULT` and hides stack details; `BEHIND_PROXY` reads `X-Forwarded-For` for the limiter |
 | Signup | `SIGNUP_ENABLED` (true), `MAX_USERS` (50) | protects the owner's credit on a public deploy (403 `signup_closed`) |
 | Models | `LLM_MODEL` gpt-6-luna, `JUDGE_MODEL` gpt-6.1-terra, `EMBEDDING_MODEL` text-embedding-3-small, `EMBEDDING_DIM` 1536 | |
 | Generation | `LLM_REASONING_EFFORT` (low), `LLM_MAX_OUTPUT_TOKENS` (4000), `JUDGE_REASONING_EFFORT` (medium) | reasoning tokens count toward the cap; if a response is `incomplete`, retry once with double the cap, then 503. **`temperature` is NOT supported: both models return HTTP 400 "Unsupported parameter: 'temperature'" [VERIFIED 24 Nov: live call]. Never send it; there is no temperature setting.** Determinism comes from fixed reasoning effort plus the disk cache |
@@ -316,7 +316,7 @@ The system prompt says:
 |---|---|---|
 | Upload | extension, MIME, magic bytes, size, page/chunk caps, encrypted, corrupt, no text, zip-bomb | 415 / 413 / 400 |
 | Input | empty / too long (also password length in B1) | 422 |
-| Input | prompt injection and jailbreak: English **pattern checks only**, no LLM classifier | 200 refused + `reason` |
+| Input | prompt injection and jailbreak: English **pattern checks first**. **Only when a pattern fires**, a short `gpt-6-luna` call (`RECHECK_SYSTEM`) decides ATTACK or OK, to release false positives such as "Show the rules for returns". **Fail-closed:** only the exact reply `OK` releases the question; an error, timeout, any other reply or `INPUT_RECHECK=false` keeps the refusal. A released question still goes through prompt rule 5 and the output checks. **Live check 24 Nov 2026:** 0 of 21 real attacks from `guardrail_cases.json` and 0 of 4 attacks aimed at the verifier itself were released (about 200 tokens per flagged question); it does not catch attacks the regex misses (false negatives) | 200 refused + `reason` |
 | Input | off-topic | similarity threshold + prompt rule. A topical-sounding off-topic question can pass; say so |
 | Output | cited ids ⊆ retrieved ids | strip and flag |
 | Output | system-prompt leak (canary + n-gram overlap), key-like strings (regex) | safe refusal, `output_blocked` |
