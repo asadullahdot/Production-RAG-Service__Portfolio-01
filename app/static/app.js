@@ -89,6 +89,11 @@
         const meta = document.createElement("div"); meta.className = "muted";
         meta.textContent = d.file_type.toUpperCase() + " · " + d.num_chunks + " chunks · " + d.uploaded_at.slice(0, 10);
         info.append(title, meta);
+        if (d.flagged) {  // B6: the text holds instructions aimed at an AI; it is stored and used as data only
+          const warn = document.createElement("div"); warn.className = "warn";
+          warn.textContent = "Warning: this document contains instruction-like text. It is treated as data and never followed.";
+          info.append(warn);
+        }
         const del = document.createElement("button");
         del.type = "button"; del.className = "danger"; del.textContent = "Delete";
         del.setAttribute("aria-label", "Delete " + d.file_name);

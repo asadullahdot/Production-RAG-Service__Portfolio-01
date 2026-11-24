@@ -31,3 +31,6 @@ details{margin-top:.5rem} summary{cursor:pointer;min-height:2.75rem;display:flex
 @media (min-width:768px){
   .columns{display:grid;grid-template-columns:20rem 1fr;gap:1rem;align-items:start}
 }
+
+.warn { color: #8a4b00; background: #fff4e0; border: 1px solid #f0c987; border-radius: 4px; padding: 0.25rem 0.5rem; margin-top: 0.25rem; font-size: 0.9rem; }
+@media (prefers-color-scheme: dark) { .warn { color: #ffd9a0; background: #3a2a10; border-color: #7a5a22; } }

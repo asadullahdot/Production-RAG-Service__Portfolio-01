@@ -10,6 +10,7 @@ Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-0
 
 ## Features
 
+- **Document guardrails (B6):** instructions hidden inside an uploaded file (even white-on-white or in speaker notes) are treated as data and never followed; the document is flagged with a warning in the list. Corrupt, encrypted, macro-carrying, zip-bomb and JavaScript-carrying files are rejected.
 - Upload PDF, DOCX, PPTX, TXT or Markdown, list, delete; duplicate detection per user (409). What a "page" is depends on the type: a PDF page, a PowerPoint **slide** (speaker notes and grouped shapes are read too), a **heading section** in Word and Markdown, the whole file for TXT. TXT and Markdown must be UTF-8. Remove types with `ALLOWED_FILE_TYPES` (default `pdf,docx,pptx,txt,md`).
 - Ask questions: answer with `[n]` citations linked to the retrieved chunks, `num_retrieved`, per-chunk similarity score; refusals are HTTP 200 with `refused=true` and a `reason`.
 - Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.

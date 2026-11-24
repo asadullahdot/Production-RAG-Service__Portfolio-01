@@ -34,6 +34,7 @@ class DocumentOut(BaseModel):
     num_pages: int
     uploaded_at: str
     file_hash: str
+    flagged: bool = False  # B6: the text contains instructions aimed at an AI; it is stored and used as data only
 
     model_config = {"json_schema_extra": {"examples": [{
         "doc_id": "0b8f6d0e-6f0a-4f6c-9a53-1f2f6d7a9c11", "file_name": "policy.pdf", "file_type": "pdf",
