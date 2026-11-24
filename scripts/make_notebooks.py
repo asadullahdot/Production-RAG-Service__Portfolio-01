@@ -21,7 +21,7 @@ NOTEBOOKS = {
         ("code", "from app.guardrails import validate_upload\nfrom app.ingestion.extraction import extract\nname, data = sample_document()\n"
                  "ftype = validate_upload(name, None, data, ct.settings, {'pdf', 'docx'})\nex = extract(data, ftype)\n"
                  "print(name, ftype, 'pages/sections:', ex.num_pages, 'chars:', ex.total_chars)"),
-        ("code", "for s in ex.sections[:3]:\n    print(f'--- page/section {s.page} ({len(s.text)} chars) ---')\n    print(s.text[:300])"),
+        ("code", "for s in ex.sections[:3]:\n    print(f'--- page/section {s.metadata[\"page\"]} ({len(s.page_content)} chars) ---')\n    print(s.page_content[:300])"),
     ],
     "02_chunk": [
         ("md", "# 02 · Chunk\nTwo configurations are compared later: **A = 1000/200**, **B = 500/100** (RecursiveCharacterTextSplitter)."),

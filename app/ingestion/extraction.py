@@ -10,18 +10,19 @@ import io
 import re
 from dataclasses import dataclass
 
+from langchain_core.documents import Document
+
 from app.errors import CorruptFile, EncryptedFile
 
 
-@dataclass
-class Section:
-    page: int  # 1-based page / section / slide number
-    text: str
+def Section(page: int, text: str) -> Document:
+    """One page / section / slide as a LangChain ``Document`` (``metadata["page"]`` is 1-based)."""
+    return Document(page_content=text, metadata={"page": page})
 
 
 @dataclass
 class Extracted:
-    sections: list[Section]
+    sections: list[Document]
 
     @property
     def num_pages(self) -> int:
@@ -29,7 +30,7 @@ class Extracted:
 
     @property
     def total_chars(self) -> int:
-        return sum(len(s.text.strip()) for s in self.sections)
+        return sum(len(s.page_content.strip()) for s in self.sections)
 
 
 def extract(data: bytes, file_type: str) -> Extracted:

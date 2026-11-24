@@ -70,10 +70,10 @@ class IngestionService:
             raise FileTooLarge(f"The document has {extracted.num_pages} pages (max {self.s.max_pages}).")
 
         for section in extracted.sections:  # B6: flag instruction-like text; it stays data
-            hits = guardrails.scan_document_text(section.text)
+            hits = guardrails.scan_document_text(section.page_content)
             if hits:
                 log_event(logger, "document contains instruction-like text (kept as data)", logging.WARNING,
-                          file_name=filename, page=section.page, patterns=len(hits))
+                          file_name=filename, page=section.metadata["page"], patterns=len(hits))
 
         drafts = await run_in_threadpool(chunk_sections, extracted.sections, self.chunk_size, self.chunk_overlap)
         if not drafts:

@@ -135,13 +135,13 @@ def test_context_cap_limits_chunks():
 # ----------------------------------------------------------------------------- extraction / chunking
 def test_pdf_extraction_per_page():
     ex = extract(make_pdf(["first page text", "second page text"]), "pdf")
-    assert [s.page for s in ex.sections] == [1, 2] and "second" in ex.sections[1].text
+    assert [s.metadata["page"] for s in ex.sections] == [1, 2] and "second" in ex.sections[1].page_content
 
 
 def test_docx_sections_by_heading_and_table_flattening():
     data = make_docx([("Intro", "hello intro"), ("Details", "the details")], table=[["a", "b"], ["c", "d"]])
     ex = extract(data, "docx")
-    assert ex.num_pages == 2 and "a | b" in ex.sections[1].text and "c | d" in ex.sections[1].text
+    assert ex.num_pages == 2 and "a | b" in ex.sections[1].page_content and "c | d" in ex.sections[1].page_content
 
 
 def test_docx_without_headings_is_one_section():
@@ -150,7 +150,7 @@ def test_docx_without_headings_is_one_section():
 
 def test_pptx_slides_and_text_formats():
     assert extract(make_pptx(["Slide one", "Slide two"]), "pptx").num_pages == 2
-    assert extract(b"plain text file", "txt").sections[0].page == 1
+    assert extract(b"plain text file", "txt").sections[0].metadata["page"] == 1
     md = extract(b"# A\nfirst\n# B\nsecond\n", "md")
     assert md.num_pages == 2
 
