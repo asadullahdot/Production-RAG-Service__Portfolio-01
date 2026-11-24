@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { reasonText, splitAnswer, unitLabel } from "../lib.js";
+import { useEffect, useState } from "react";
+import { reasonText, sourcePreview, splitAnswer, unitLabel } from "../lib.js";
 
 // One question and its answer. Everything from the server is rendered as React text, never as HTML.
-export default function Turn({ turn }) {
-  const [open, setOpen] = useState(true);
+export default function Turn({ turn, latest }) {
+  const [open, setOpen] = useState(latest);
+  useEffect(() => { setOpen(latest); }, [latest]);  // asking a new question folds the older answers' sources
   const [flash, setFlash] = useState(null);
   const r = turn.result;
 
@@ -60,8 +61,14 @@ export default function Turn({ turn }) {
             </p>
 
             {r.retrieved_chunks.length > 0 && (
-              <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="mt-2">
-                <summary className="flex min-h-11 cursor-pointer items-center font-medium">Sources ({r.retrieved_chunks.length})</summary>
+              <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="group mt-2">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4 shrink-0 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
+                  <span className="shrink-0">Sources ({r.retrieved_chunks.length})</span>
+                  {!open && <span className="muted min-w-0 truncate font-normal">{sourcePreview(r.retrieved_chunks, r.citations)}</span>}
+                </summary>
                 <ol className="mt-1 space-y-3">
                   {r.retrieved_chunks.map((c) => {
                     const cited = r.citations.some((x) => x.n === c.n);

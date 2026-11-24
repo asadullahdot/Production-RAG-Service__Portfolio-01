@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, json } from "../api.js";
-import { isSendKey, scopeIds } from "../lib.js";
+import { isSendKey, scopeIds, sumTokens } from "../lib.js";
 import Turn from "./Turn.jsx";
 
 const MAX = 1000;  // the server's MAX_QUESTION_CHARS
@@ -43,6 +43,7 @@ export default function Chat({ docs, loading, excluded, token }) {
     box.current?.focus();
   }
 
+  const tokens = sumTokens(turns.map((t) => t.result));
   const scope = docs.length === 0 ? "" : !ids ? `Answers use all ${docs.length} document${docs.length === 1 ? "" : "s"}.` : `Answers use ${ids.length} of ${docs.length} documents.`;
 
   return (
@@ -65,7 +66,7 @@ export default function Chat({ docs, loading, excluded, token }) {
             )}
           </div>
         ) : (
-          turns.map((t) => <Turn key={t.id} turn={t} />)
+          turns.map((t, i) => <Turn key={t.id} turn={t} latest={i === turns.length - 1} />)
         )}
         <div ref={end} />
       </div>
@@ -88,7 +89,7 @@ export default function Chat({ docs, loading, excluded, token }) {
           </button>
         </form>
         <p className="muted mt-1 flex flex-wrap justify-between gap-x-4 px-1">
-          <span>Enter to send · Shift+Enter for a new line{scope && ` · ${scope}`}</span>
+          <span>Enter to send · Shift+Enter for a new line{scope && ` · ${scope}`}{tokens > 0 && ` · ${tokens.toLocaleString()} tokens this session`}</span>
           {text.length > MAX * 0.8 && <span aria-live="polite">{text.length}/{MAX}</span>}
         </p>
       </div>

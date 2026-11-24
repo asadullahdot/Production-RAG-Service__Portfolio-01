@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptAttribute, isSendKey, reasonText, scopeIds, splitAnswer, unitLabel } from "./lib.js";
+import { acceptAttribute, isSendKey, reasonText, scopeIds, sourcePreview, splitAnswer, sumTokens, unitLabel } from "./lib.js";
 
 describe("splitAnswer", () => {
   const cites = [{ n: 1 }, { n: 2 }];
@@ -50,4 +50,20 @@ describe("isSendKey (Enter sends, Shift+Enter makes a new line)", () => {
     expect(isSendKey({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 229 })).toBe(false);
   });
   it("ignores other keys", () => expect(isSendKey({ key: "a", shiftKey: false, isComposing: false, keyCode: 65 })).toBe(false));
+});
+
+describe("sourcePreview and sumTokens", () => {
+  const chunks = [
+    { n: 1, file_name: "a.pdf", page: 2 }, { n: 2, file_name: "b.docx", page: 1 }, { n: 3, file_name: "a.pdf", page: 2 },
+    { n: 4, file_name: "c.pptx", page: 5 }, { n: 5, file_name: "d.md", page: 1 },
+  ];
+  it("lists the cited sources first and only those", () => {
+    expect(sourcePreview(chunks, [{ n: 2 }, { n: 4 }])).toBe("b.docx section 1, c.pptx slide 5");
+  });
+  it("falls back to the top hits when nothing was cited, and says how many more", () => {
+    expect(sourcePreview(chunks, [])).toBe("a.pdf page 2, b.docx section 1, c.pptx slide 5 +1 more");
+  });
+  it("adds up input and output tokens and ignores failed turns", () => {
+    expect(sumTokens([{ usage: { input_tokens: 600, output_tokens: 83 } }, undefined, { usage: { input_tokens: 10, output_tokens: 7 } }])).toBe(700);
+  });
 });

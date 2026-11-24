@@ -48,6 +48,20 @@ export function formatDate(iso) {
   return Number.isNaN(d.getTime()) ? String(iso).slice(0, 10) : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+// One line shown on a closed Sources panel: the cited sources first (or the top hits if none was cited), at most three.
+export function sourcePreview(chunks, citations) {
+  const cited = new Set((citations || []).map((c) => c.n));
+  const ordered = [...chunks.filter((c) => cited.has(c.n)), ...chunks.filter((c) => !cited.has(c.n))];
+  const chosen = cited.size ? ordered.filter((c) => cited.has(c.n)) : ordered;
+  const items = [...new Set(chosen.map((c) => `${c.file_name} ${unitLabel(c.file_name)} ${c.page}`))];
+  return items.slice(0, 3).join(", ") + (items.length > 3 ? ` +${items.length - 3} more` : "");
+}
+
+// Tokens the API reported for the answers of this session (screen + answer model; embeddings are not included).
+export function sumTokens(results) {
+  return results.reduce((sum, r) => sum + (r?.usage ? r.usage.input_tokens + r.usage.output_tokens : 0), 0);
+}
+
 // Which documents to send with a question. Everything included (or nothing excluded) means "all", so send nothing.
 export function scopeIds(docs, excluded) {
   const included = docs.filter((d) => !excluded.has(d.doc_id)).map((d) => d.doc_id);

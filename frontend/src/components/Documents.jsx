@@ -41,7 +41,7 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
   }
 
   return (
-    <section className="card" aria-labelledby="docs-title">
+    <section className="card md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:overflow-y-auto" aria-labelledby="docs-title">
       <h2 id="docs-title" className="text-base font-semibold">Documents</h2>
 
       <div
