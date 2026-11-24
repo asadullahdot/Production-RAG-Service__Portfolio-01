@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,6 +42,9 @@ def _error(request_id: str, status: int, code: str, message: str, details: dict 
     return resp
 
 
+_SAFE_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
 def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
     settings = settings or get_settings()
     setup_logging()
@@ -56,6 +60,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         except Exception as exc:  # the UI/docs should still start; requests will return 503
             log_event(logger, "vector collection not ready at startup", logging.WARNING, error=str(exc)[:200])
         yield
+        for closer in (app.state.container.db.close, app.state.container.store.close):  # release the SQLite file and Qdrant client/lock
+            try:
+                result = closer()
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as exc:
+                log_event(logger, "shutdown cleanup failed", logging.WARNING, error=type(exc).__name__)
 
     app = FastAPI(
         title="Production RAG Service",
@@ -72,7 +83,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.add_middleware(UploadSizeLimit, max_bytes=settings.max_upload_bytes, max_mb=settings.max_upload_mb)  # inner: runs after request_context
     @app.middleware("http")
     async def request_context(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or new_request_id()
+        supplied = request.headers.get("X-Request-ID", "")
+        request_id = supplied if _SAFE_REQUEST_ID.fullmatch(supplied) else new_request_id()  # never trust header text
         token_ctx = request_id_var.set(request_id)
         started = time.monotonic()
         key = (request.method, request.url.path)
@@ -88,7 +100,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     response = _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
                                       headers={"Retry-After": str(retry_after)})
             if response is None:
-                response = await call_next(request)
+                try:
+                    response = await call_next(request)
+                except Exception:  # built here, while the request id is still set (the outer handler would lose it)
+                    logger.exception("unhandled error")  # traceback stays in server logs only
+                    response = _error(request_id, 500, "internal_error", "Internal server error.")
             status = response.status_code
             response.headers["X-Request-ID"] = request_id
             return response

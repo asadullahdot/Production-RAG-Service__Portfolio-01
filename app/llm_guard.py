@@ -156,7 +156,8 @@ class LLMGuard:
                     timeout = self.s.llm_timeout_s if service != "embed" else self.s.embed_timeout_s
                     if deadline is not None:
                         timeout = max(0.1, min(timeout, deadline - time.monotonic()))
-                    return await asyncio.wait_for(call(), timeout=timeout + 1)
+                    # +1 s lets the SDK's own timeout fire first, but never past the request deadline
+                    return await asyncio.wait_for(call(), timeout=timeout if deadline is not None else timeout + 1)
             except UpstreamUnavailable:
                 raise
             except _Transient as exc:

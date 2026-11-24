@@ -100,7 +100,7 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
         resp = await container.ask.ask(owner, AskRequest(question=q["question"]))
         row.update(refused=resp.refused, reason=resp.reason, answer=resp.answer,
                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
-                   latency_ms=cached.last.get("latency_ms", resp.latency_ms) if resp.usage.input_tokens else 0)
+                   generation_ms=cached.last.get("latency_ms", 0) if resp.usage.input_tokens else 0)
         row["citations"] = [c.n for c in resp.citations]
         if use_judge and not resp.refused:
             # The judge must see exactly the chunks that were in the prompt: above the threshold and within the
@@ -124,7 +124,7 @@ def summarise(result: dict, split: str = "test") -> dict:
     answered_ans = [r for r in ans if not r.get("refused")]
     una_ok = [r for r in una if r.get("refused") or r.get("declines")]
     faith = [r["faithfulness"] for r in answered_ans if r.get("faithfulness") is not None]
-    lat = [r["latency_ms"] for r in rows if r.get("latency_ms")]
+    lat = [r["generation_ms"] for r in rows if r.get("generation_ms")]
     tokens = [r.get("input_tokens", 0) + r.get("output_tokens", 0) for r in rows]
     return {
         "split": split, "n_answerable": len(ans), "n_unanswerable": len(una),
@@ -134,7 +134,7 @@ def summarise(result: dict, split: str = "test") -> dict:
         "correctness": metrics.mean(r.get("correctness", 0.0) for r in ans),
         "unanswerable_refused": (len(una_ok) / len(una)) if una else None,
         "over_refusal_rate": (sum(1 for r in ans if r.get("refused")) / len(ans)) if ans else None,
-        "latency_ms_p50": metrics.percentile(lat, 0.5), "latency_ms_p95": metrics.percentile(lat, 0.95),
+        "generation_ms_p50": metrics.percentile(lat, 0.5), "generation_ms_p95": metrics.percentile(lat, 0.95),
         "tokens_per_question": metrics.mean(tokens),
     }
 
@@ -167,7 +167,7 @@ def print_summary(results: dict) -> None:
     def fmt(v):
         return "-" if v is None else (f"{v:.3f}" if isinstance(v, float) else str(v))
     cols = ["hit_at_k", "mrr", "recall_at_k", "faithfulness", "correctness", "unanswerable_refused", "over_refusal_rate",
-            "latency_ms_p50", "latency_ms_p95", "tokens_per_question"]
+            "generation_ms_p50", "generation_ms_p95", "tokens_per_question"]
     print(f"\nTest-split results ({results['date']}, commit {results['git_commit']}, cached calls: {results['cache']['hits']})")
     print(f"{'config':<8}{'thr':>7}  " + "  ".join(f"{c[:14]:>14}" for c in cols))
     for name, r in results["configs"].items():

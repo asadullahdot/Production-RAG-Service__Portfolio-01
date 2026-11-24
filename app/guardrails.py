@@ -8,6 +8,7 @@ import io
 import re
 import unicodedata
 import zipfile
+import zlib
 from dataclasses import dataclass
 
 from app.config import (API_KEY_REGEXES, DOCUMENT_INSTRUCTION_PATTERNS, INJECTION_PATTERNS,
@@ -81,6 +82,17 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
         raise MaliciousFile("The archive is too large when decompressed.")
     if any(n.lower().endswith("vbaproject.bin") for n in names):
         raise MaliciousFile("Files containing macros are not accepted.")
+    # The sizes above are only what the archive claims. Decompress with a hard cap to see what it really holds.
+    budget = settings.max_zip_uncompressed_mb * 1024 * 1024
+    try:
+        for info in infos:
+            with zf.open(info) as member:
+                while chunk := member.read(1024 * 1024):
+                    budget -= len(chunk)
+                    if budget < 0:
+                        raise MaliciousFile("The archive is too large when decompressed.")
+    except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as exc:
+        raise CorruptFile() from exc
 
 
 # ----------------------------------------------------------------------------- input
@@ -93,6 +105,7 @@ class InputVerdict:
 
 def _normalise(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")  # zero-width and other invisible characters
     return re.sub(r"\s+", " ", text).strip()
 
 

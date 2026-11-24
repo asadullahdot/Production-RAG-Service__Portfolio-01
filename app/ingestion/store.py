@@ -199,6 +199,10 @@ class QdrantStore:
             self.collection, count_filter=_owner_filter(owner), exact=True))
         return res.count
 
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.close()
+
     async def ping(self) -> bool:
         try:
             await self._ensure_ready()

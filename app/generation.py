@@ -80,19 +80,16 @@ def _expand(group: str) -> list[int]:
     return out
 
 
-MAX_CITATION_NUMBER = 20  # = TOP_K_MAX: a bracketed number above this cannot be a chunk number (e.g. [2024])
-
-
-def parse_citations(answer: str, valid: set[int]) -> tuple[str, list[int], list[int]]:
+def parse_citations(answer: str, valid: set[int], max_number: int = 20) -> tuple[str, list[int], list[int]]:
     """Return (answer with only valid markers as ``[n]``, cited numbers in order, stripped numbers).
 
-    Brackets holding a number above ``MAX_CITATION_NUMBER`` are not citations and are left untouched."""
+    Brackets holding a number above ``max_number`` (``TOP_K_MAX``) cannot be chunk numbers (e.g. ``[2024]``) and are left untouched."""
     cited: list[int] = []
     stripped: list[int] = []
 
     def repl(match: re.Match) -> str:
         nums = _expand(match.group(1))
-        if any(n > MAX_CITATION_NUMBER for n in nums):
+        if any(n > max_number for n in nums):
             return match.group(0)
         good = [n for n in nums if n in valid]
         stripped.extend(n for n in nums if n not in valid)
@@ -174,7 +171,7 @@ class AskService:
                 return self._finish(self._refusal(REFUSAL_TEXT, "not_in_documents", result.raw, usage), started)
             if kind == "malformed":
                 continue  # retry once; never show the raw token
-            answer, cited, stripped = parse_citations(raw, valid)
+            answer, cited, stripped = parse_citations(raw, valid, self.s.top_k_max)
             if stripped:
                 log_event(logger, "stripped invalid citations", logging.WARNING, numbers=sorted(set(stripped)))
             if cited:

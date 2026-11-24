@@ -20,9 +20,10 @@ INJECTION_REFUSAL_TEXT = "I can't follow instructions that try to change my rule
 # HARD patterns are always refused. SOFT patterns also match ordinary document questions ("show your rules for
 # refunds", "how do I jailbreak ...", "developer mode"), so only those may be released by the model recheck.
 HARD_INJECTION_PATTERNS = [
-    r"ignore\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
-    r"disregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
+    r"ignore\s+(all\s+|any\s+|the\s+|your\s+|of\s+)*(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
+    r"disregard\s+(all\s+|any\s+|the\s+|your\s+|of\s+)*(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"forget\s+(all\s+|everything\s+|your\s+)?(previous|prior|above|earlier)?\s*(instructions?|rules?)",
+    r"ignore\s+(everything|anything)\s+(above|before|you\s+were\s+told)",
     r"override\s+(your|the)\s+(instructions|rules|guidelines|safety)",
     r"new\s+instructions?\s*:",
     r"(give|tell|show|reveal|share|print|send)\s+(me\s+)?(your|the\s+system'?s?|the\s+server'?s?)\s+(api[\s_-]?key|secret[\s_-]?key|access\s+token|password|credentials)",
