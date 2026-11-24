@@ -199,7 +199,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         vector_db_ok = await c.store.healthy()  # cached inside the store so probes don't hammer the vector DB
         ok = sqlite_ok and vector_db_ok
         body = HealthOut(status="ok" if ok else "degraded", sqlite=sqlite_ok, qdrant=vector_db_ok,
-                         auth_enabled=c.settings.auth_enabled)
+                         auth_enabled=c.settings.auth_enabled, file_types=sorted(c.ingestion.allowed_types))
         return JSONResponse(body.model_dump(), status_code=200 if ok else 503)
 
     @app.get("/", include_in_schema=False)

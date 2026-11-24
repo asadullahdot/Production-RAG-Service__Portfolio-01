@@ -134,7 +134,7 @@ class Settings(BaseSettings):
     max_question_chars: int = 1000
     max_context_chars: int = 12000
     embed_batch_size: int = 100
-    allowed_file_types: str = "pdf,docx"  # B5 adds pptx,txt,md
+    allowed_file_types: str = "pdf,docx,pptx,txt,md"  # B5 types: pptx (page = slide), txt, md (page = heading section)
     max_zip_uncompressed_mb: int = 100
     max_zip_ratio: int = 100
 

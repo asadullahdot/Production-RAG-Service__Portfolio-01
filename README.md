@@ -1,6 +1,6 @@
 # Production RAG Service
 
-Upload documents (PDF, DOCX) and ask questions that are answered **only from those documents**, with numbered citations, a chunks panel (count + similarity scores) and explicit refusals when the answer is not in the documents.
+Upload documents (PDF, DOCX, PPTX, TXT, Markdown) and ask questions that are answered **only from those documents**, with numbered citations, a chunks panel (count + similarity scores) and explicit refusals when the answer is not in the documents.
 
 FastAPI · OpenAI (`gpt-6-luna` answers, `text-embedding-3-small` embeddings, `gpt-6.1-terra` as evaluation judge) · Qdrant (one collection, owner-filtered) · SQLite (document registry, users) · LangChain for the model wrappers (`ChatOpenAI`, `OpenAIEmbeddings`), `Document` and the text splitter. The pipeline itself is plain async Python (no chains, no LangGraph).
 
@@ -10,7 +10,7 @@ Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-0
 
 ## Features
 
-- Upload PDF/DOCX (TXT, MD, PPTX can be enabled with `ALLOWED_FILE_TYPES`), list, delete; duplicate detection per user (409).
+- Upload PDF, DOCX, PPTX, TXT or Markdown, list, delete; duplicate detection per user (409). What a "page" is depends on the type: a PDF page, a PowerPoint **slide** (speaker notes and grouped shapes are read too), a **heading section** in Word and Markdown, the whole file for TXT. TXT and Markdown must be UTF-8. Remove types with `ALLOWED_FILE_TYPES` (default `pdf,docx,pptx,txt,md`).
 - Ask questions: answer with `[n]` citations linked to the retrieved chunks, `num_retrieved`, per-chunk similarity score; refusals are HTTP 200 with `refused=true` and a `reason`.
 - Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.
 - One error shape for every failure, `X-Request-ID` on every response, JSON logs with secret redaction, in-memory rate limit (429), bounded retries/timeouts/concurrency for every OpenAI call (upstream failure → 503).

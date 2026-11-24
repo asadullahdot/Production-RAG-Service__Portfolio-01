@@ -11,6 +11,22 @@
                 : (localStorage.removeItem("token"), localStorage.removeItem("email")); } catch (_) {}
   }
 
+  // What "page" means depends on the file type: a PDF page, a PowerPoint slide, a heading section in Word and Markdown.
+  function unitLabel(fileName) {
+    const ext = String(fileName).split(".").pop().toLowerCase();
+    if (ext === "pdf") return "page";
+    if (ext === "pptx") return "slide";
+    if (ext === "txt") return "text";
+    return "section";
+  }
+
+  function showFileTypes(types) {
+    if (!types || !types.length) return;
+    const exts = types.flatMap(t => (t === "md" ? [".md", ".markdown"] : ["." + t]));
+    $("file").accept = exts.join(",");
+    $("file-hint").textContent = "Supported: " + types.map(t => t.toUpperCase()).join(", ") + ".";
+  }
+
   function showError(msg) { const e = $("error"); e.textContent = msg || ""; e.hidden = !msg; }
 
   async function api(path, opts = {}) {
@@ -136,7 +152,7 @@
     for (const c of chunks) {
       const li = document.createElement("li"); li.id = "chunk-" + c.n; li.value = c.n;
       const src = document.createElement("div"); src.className = "src";
-      src.textContent = c.file_name + " · page/section " + c.page + " · similarity " + c.score.toFixed(3);
+      src.textContent = c.file_name + " · " + unitLabel(c.file_name) + " " + c.page + " · similarity " + c.score.toFixed(3);
       const text = document.createElement("div"); text.className = "text"; text.textContent = c.text;
       li.append(src, text); ol.append(li);
     }
@@ -168,7 +184,7 @@
 
   // ---------------------------------------------------------------- start
   (async () => {
-    try { const h = await fetch("/health"); state.authEnabled = (await h.json()).auth_enabled === true; } catch (_) {}
+    try { const h = await fetch("/health"); const body = await h.json(); state.authEnabled = body.auth_enabled === true; showFileTypes(body.file_types); } catch (_) {}
     render();
   })();
 })();
