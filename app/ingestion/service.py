@@ -1,7 +1,7 @@
 """Upload / delete / list orchestration (PLAN.md §8.1, §4.4).
 
 Order matters: the SQLite registry row is written LAST; any failure after embedding starts
-deletes the computed vector ids so no orphans survive.
+deletes the document's points by filter so no orphans survive.
 """
 from __future__ import annotations
 
@@ -94,8 +94,7 @@ class IngestionService:
                     "uploaded_at": uploaded_at, "text": d.text})
                 for i, d in enumerate(drafts)
             ]
-            await self.store.upsert(owner_id, items)
-            await self._wait_visible(owner_id, ids[-1])
+            await self.store.upsert(owner_id, items)  # wait=True: points are searchable when this returns
             try:
                 row = await run_in_threadpool(
                     lambda: self.db.add_document(
@@ -105,7 +104,7 @@ class IngestionService:
                 other = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
                 raise DuplicateDocument(details={"doc_id": other["doc_id"] if other else None}) from exc
         except BaseException as exc:
-            await self._cleanup(owner_id, ids)
+            await self._cleanup(owner_id, doc_id)
             if isinstance(exc, AppError):
                 raise
             if isinstance(exc, (Exception,)):
@@ -116,19 +115,9 @@ class IngestionService:
                   seconds=round(time.monotonic() - started, 2))
         return doc_out(row)
 
-    async def _wait_visible(self, owner_id: str, last_id: str) -> None:
-        deadline = time.monotonic() + self.s.index_ready_timeout_s
-        while True:
-            if await self.store.exists(owner_id, last_id):
-                return
-            if time.monotonic() >= deadline:
-                log_event(logger, "vectors not yet queryable after timeout; continuing", logging.WARNING)
-                return
-            await asyncio.sleep(0.5)
-
-    async def _cleanup(self, owner_id: str, ids: list[str]) -> None:
+    async def _cleanup(self, owner_id: str, doc_id: str) -> None:
         try:
-            await asyncio.shield(self.store.delete_ids(owner_id, ids))
+            await asyncio.shield(self.store.delete_document(owner_id, doc_id))
         except Exception as exc:
             log_event(logger, "cleanup of partial upload failed", logging.ERROR, error=type(exc).__name__)
 
@@ -141,5 +130,5 @@ class IngestionService:
         row = await run_in_threadpool(self.db.get_document, owner_id, doc_id)
         if row is None:
             raise NotFound("Document not found.")
-        await self.store.delete_ids(owner_id, vector_ids(doc_id, row["num_chunks"]))  # 503 on failure, row kept
+        await self.store.delete_document(owner_id, doc_id)  # one filtered delete; 503 on failure, row kept
         await run_in_threadpool(self.db.delete_document, owner_id, doc_id)

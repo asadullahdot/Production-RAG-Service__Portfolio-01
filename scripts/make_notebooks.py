@@ -34,18 +34,18 @@ NOTEBOOKS = {
         ("code", "chunks = chunk_sections(ex.sections, 500, 100)\nfor c in chunks[:3]:\n    print(c.chunk_idx, 'page', c.page, repr(c.text[:120]))"),
     ],
     "03_embed_store": [
-        ("md", "# 03 · Embed and store\nEmbed the chunks and upsert them to the user's Pinecone namespace; wait until they are queryable."),
+        ("md", "# 03 · Embed and store\nEmbed the chunks and upsert them to the user's Qdrant collection (wait=True: queryable when the call returns)."),
         ("code", BOOT),
-        ("code", "OWNER = 'notebook_demo'\nname, data = sample_document()\narun(ct.store.delete_namespace(OWNER))\n"
+        ("code", "OWNER = 'notebook_demo'\nname, data = sample_document()\narun(ct.store.delete_owner(OWNER))\n"
                  "doc = arun(ct.ingestion.upload(OWNER, name, data, None))\nprint(doc)"),
         ("code", "print('vector ids:', [f\"{doc['doc_id'][:8]}…:{i}\" for i in range(doc['num_chunks'])][:5])\n"
-                 "print('queryable:', arun(ct.store.exists(OWNER, f\"{doc['doc_id']}:{doc['num_chunks'] - 1}\")))\n"
+                 "print('vectors stored:', arun(ct.store.count(OWNER)))\n"
                  "print('registry:', ct.db.list_documents(OWNER)[0]['num_chunks'], 'chunks')"),
     ],
     "04_retrieve": [
         ("md", "# 04 · Retrieve\nEmbed the question, search the owner's namespace, apply the registry filter and the similarity threshold."),
         ("code", BOOT),
-        ("code", "from app.retrieval import retrieve\nOWNER = 'notebook_demo'\nname, data = sample_document()\narun(ct.store.delete_namespace(OWNER))\n"
+        ("code", "from app.retrieval import retrieve\nOWNER = 'notebook_demo'\nname, data = sample_document()\narun(ct.store.delete_owner(OWNER))\n"
                  "for d in ct.db.list_documents(OWNER):\n    ct.db.delete_document(OWNER, d['doc_id'])\narun(ct.ingestion.upload(OWNER, name, data, None))\n"
                  "res = arun(retrieve(OWNER, 'What is the refund policy for returns?', embedder=ct.openai, store=ct.store, db=ct.db, settings=ct.settings, threshold=0.0))\n"
                  "for c in res.raw:\n    print(f'[{c.n}] score={c.score:.3f} page={c.page} {c.text[:90]!r}')"),
@@ -55,7 +55,7 @@ NOTEBOOKS = {
     "05_answer": [
         ("md", "# 05 · Answer\nFull ask pipeline: guardrails → retrieval → prompt → LLM → citation check → output guardrails."),
         ("code", BOOT),
-        ("code", "from app.schemas import AskRequest\nOWNER = 'notebook_demo'\nname, data = sample_document()\narun(ct.store.delete_namespace(OWNER))\n"
+        ("code", "from app.schemas import AskRequest\nOWNER = 'notebook_demo'\nname, data = sample_document()\narun(ct.store.delete_owner(OWNER))\n"
                  "for d in ct.db.list_documents(OWNER):\n    ct.db.delete_document(OWNER, d['doc_id'])\narun(ct.ingestion.upload(OWNER, name, data, None))\n"
                  "r = arun(ct.ask.ask(OWNER, AskRequest(question='What is the refund policy for returns?')))\n"
                  "print('answer:', r.answer)\nprint('citations:', [(c.n, c.file_name, c.page) for c in r.citations])\nprint('refused:', r.refused, r.reason, '| retrieved:', r.num_retrieved, '| tokens:', r.usage)"),

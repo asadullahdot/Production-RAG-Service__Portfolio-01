@@ -100,5 +100,5 @@ class ErrorResponse(BaseModel):
 class HealthOut(BaseModel):
     status: str
     sqlite: bool
-    pinecone: bool
+    qdrant: bool
     auth_enabled: bool

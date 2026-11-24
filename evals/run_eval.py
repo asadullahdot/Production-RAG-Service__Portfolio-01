@@ -1,7 +1,7 @@
 """One-command evaluation: ``python -m evals.run_eval --config all`` (PLAN.md §12).
 
 For each chunking config (A 1000/200, B 500/100) it re-ingests the corpus under an isolated internal owner,
-its own SQLite file and its own Pinecone namespace, then measures retrieval (hit@k, recall@k, MRR), answers
+its own SQLite file and its own Qdrant collection (<name>_eval), then measures retrieval (hit@k, recall@k, MRR), answers
 every question, runs the LLM judge, tunes the similarity threshold on the dev split and reports on the test split.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.config import Settings, get_settings
 from app.container import build_container
 from app.db import Database
 from app.ingestion.service import IngestionService
-from app.ingestion.store import PineconeStore, VectorStore
+from app.ingestion.store import QdrantStore, VectorStore
 from app.llm_guard import LLMGuard
 from app.retrieval import retrieve
 from app.schemas import AskRequest
@@ -61,7 +61,7 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
     ingestion = IngestionService(cfg_settings, container.db, store, cached,
                                  allowed_types={"pdf", "docx", "pptx", "txt", "md"}, chunk_size=size, chunk_overlap=overlap)
 
-    await store.delete_namespace(owner)  # wipe and re-ingest every run
+    await store.delete_owner(owner)  # wipe and re-ingest every run
     for f in corpus_files:
         await ingestion.upload(owner, f.name, f.read_bytes(), None)
     docs = container.db.list_documents(owner)
@@ -102,7 +102,7 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
                        judge_parse_error=v.parse_error, n_doc_claims=len(v.document_claims))
         elif q["answerable"]:
             row.update(correctness=0.0)  # over-refusal scores 0
-    await store.delete_namespace(owner)
+    await store.delete_owner(owner)
     return {"config": name, "chunk_size": size, "chunk_overlap": overlap, "documents": len(docs), "chunks": num_chunks,
             "threshold": threshold, "dev_curve": curve, "rows": rows}
 
@@ -181,8 +181,8 @@ async def main_async(args) -> int:
     questions = load_golden(golden_path)
     cache = DiskCache()
     inner = LLMGuard(settings)
-    store = PineconeStore(settings)
-    await store.ensure_index()
+    store = QdrantStore(settings, collection=f"{settings.qdrant_collection}_eval")  # never the live collection
+    await store.ensure_collection()
     work_dir = ROOT / "data"
     work_dir.mkdir(exist_ok=True)
 

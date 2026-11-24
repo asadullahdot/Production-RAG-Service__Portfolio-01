@@ -47,11 +47,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def lifespan(app: FastAPI):
         auth.validate_auth_config(settings)
         app.state.container = container or build_container(settings)
-        app.state.pinecone_checked = (0.0, False)
+        app.state.vector_db_checked = (0.0, False)
         try:
-            await app.state.container.store.ensure_index()
+            await app.state.container.store.ensure_collection()
         except Exception as exc:  # the UI/docs should still start; requests will return 503
-            log_event(logger, "vector index not ready at startup", logging.WARNING, error=str(exc)[:200])
+            log_event(logger, "vector collection not ready at startup", logging.WARNING, error=str(exc)[:200])
         yield
 
     app = FastAPI(
@@ -63,7 +63,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     )
     # An injected container (tests) is usable without running the lifespan.
     app.state.container = container
-    app.state.pinecone_checked = (0.0, False)
+    app.state.vector_db_checked = (0.0, False)
 
     # ------------------------------------------------------------------ middleware
     @app.middleware("http")
@@ -174,12 +174,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def health(request: Request):
         c: Container = request.app.state.container
         sqlite_ok = c.db.ping()
-        checked_at, pinecone_ok = request.app.state.pinecone_checked
+        checked_at, vector_db_ok = request.app.state.vector_db_checked
         if time.monotonic() - checked_at > 60:  # cached so probes don't hit the vector DB
-            pinecone_ok = await c.store.ping()
-            request.app.state.pinecone_checked = (time.monotonic(), pinecone_ok)
-        ok = sqlite_ok and pinecone_ok
-        body = HealthOut(status="ok" if ok else "degraded", sqlite=sqlite_ok, pinecone=pinecone_ok,
+            vector_db_ok = await c.store.ping()
+            request.app.state.vector_db_checked = (time.monotonic(), vector_db_ok)
+        ok = sqlite_ok and vector_db_ok
+        body = HealthOut(status="ok" if ok else "degraded", sqlite=sqlite_ok, qdrant=vector_db_ok,
                          auth_enabled=c.settings.auth_enabled)
         return JSONResponse(body.model_dump(), status_code=200 if ok else 503)
 

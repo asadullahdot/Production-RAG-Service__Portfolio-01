@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     # secrets
     openai_api_key: str = ""
-    pinecone_api_key: str = ""
+    qdrant_api_key: str = ""
     jwt_secret: str = ""
 
     # auth (B1)
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # general
     env: str = "dev"
     behind_proxy: bool = False
-    demo_fault: str = "none"  # none | llm_timeout | llm_429 | pinecone_down
+    demo_fault: str = "none"  # none | llm_timeout | llm_429 | vector_db_down
     request_deadline_s: float = 60.0
 
     # models
@@ -82,14 +82,12 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 4000
     judge_reasoning_effort: str = "medium"
 
-    # pinecone
-    pinecone_index: str = "rag-service"
-    pinecone_cloud: str = "aws"
-    pinecone_region: str = "us-east-1"
-    pinecone_namespace_prefix: str = "user"
-    pinecone_upsert_batch: int = 100
-    pinecone_timeout_s: float = 15.0
-    index_ready_timeout_s: float = 15.0
+    # qdrant (PLAN.md §6): QDRANT_PATH = embedded mode (tests/notebooks), otherwise QDRANT_URL (+ key for the cloud)
+    qdrant_url: str = ""
+    qdrant_path: str = ""
+    qdrant_collection: str = "rag_chunks"
+    qdrant_timeout_s: float = 15.0
+    qdrant_upsert_batch: int = 100
 
     # storage
     sqlite_path: str = "./data/app.db"

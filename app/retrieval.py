@@ -1,4 +1,4 @@
-"""Embed query → Pinecone search (owner namespace) → registry filter → similarity threshold (PLAN.md §8.2)."""
+"""Embed query → Qdrant search (owner filter) → registry filter → similarity threshold (PLAN.md §8.2)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
