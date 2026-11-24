@@ -73,13 +73,20 @@ def _expand(group: str) -> list[int]:
     return out
 
 
+MAX_CITATION_NUMBER = 20  # = TOP_K_MAX: a bracketed number above this cannot be a chunk number (e.g. [2024])
+
+
 def parse_citations(answer: str, valid: set[int]) -> tuple[str, list[int], list[int]]:
-    """Return (answer with only valid markers as ``[n]``, cited numbers in order, stripped numbers)."""
+    """Return (answer with only valid markers as ``[n]``, cited numbers in order, stripped numbers).
+
+    Brackets holding a number above ``MAX_CITATION_NUMBER`` are not citations and are left untouched."""
     cited: list[int] = []
     stripped: list[int] = []
 
     def repl(match: re.Match) -> str:
         nums = _expand(match.group(1))
+        if any(n > MAX_CITATION_NUMBER for n in nums):
+            return match.group(0)
         good = [n for n in nums if n in valid]
         stripped.extend(n for n in nums if n not in valid)
         for n in good:

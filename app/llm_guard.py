@@ -152,6 +152,8 @@ class LLMGuard:
                     if deadline is not None:
                         timeout = max(0.1, min(timeout, deadline - time.monotonic()))
                     return await asyncio.wait_for(call(), timeout=timeout + 1)
+            except UpstreamUnavailable:
+                raise
             except _Transient as exc:
                 reason, retry_after = exc.reason, exc.retry_after
             except (asyncio.TimeoutError, openai.APITimeoutError):
@@ -170,6 +172,10 @@ class LLMGuard:
                     log_event(logger, "OpenAI rejected the request", logging.ERROR,
                               service=service, status=exc.status_code)
                     raise UpstreamUnavailable() from exc
+            except Exception as exc:  # unexpected payload / parse / SDK error: still a 503, never a 500
+                log_event(logger, "unexpected model-call failure", logging.ERROR,
+                          service=service, error=type(exc).__name__)
+                raise UpstreamUnavailable() from exc
 
             attempt += 1
             if attempt > self.s.max_retries:

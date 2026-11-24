@@ -1,6 +1,6 @@
 """Shared helper for the step-by-step notebooks.
 
-With OPENAI_API_KEY and PINECONE_API_KEY set the notebooks use the REAL services. Without keys they fall back to
+With OPENAI_API_KEY and QDRANT_URL (or QDRANT_PATH) set the notebooks use the REAL services. Without keys they fall back to
 the offline test doubles (hashed bag-of-words embedder, embedded Qdrant store, scripted LLM) and print a loud banner,
 so the plumbing can still be demonstrated. Re-run with keys before submitting to capture real outputs.
 """
@@ -18,12 +18,29 @@ from app.container import build_container  # noqa: E402
 from app.ingestion.store import QdrantStore  # noqa: E402
 
 
+_LOOP = None
+
+
 def arun(coro):
-    """Run a coroutine to completion from a notebook cell (Jupyter already has a running event loop)."""
+    """Run a coroutine to completion from a notebook cell (Jupyter already has a running event loop).
+
+    All cells share ONE background event loop: the OpenAI and Qdrant HTTP clients bind to the loop they are first
+    used on, so a fresh ``asyncio.run`` per cell would break them with "Event loop is closed".
+    """
     import asyncio
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(1) as pool:
-        return pool.submit(asyncio.run, coro).result()
+    import threading
+    global _LOOP
+    if _LOOP is None:
+        _LOOP = asyncio.new_event_loop()
+        threading.Thread(target=_LOOP.run_forever, daemon=True).start()
+    return asyncio.run_coroutine_threadsafe(coro, _LOOP).result()
+
+
+def reset_owner(ct, owner: str) -> None:
+    """Start a notebook from a clean slate: delete the owner's vectors AND registry rows (the two stores must agree)."""
+    arun(ct.store.delete_owner(owner))
+    for row in ct.db.list_documents(owner):
+        ct.db.delete_document(owner, row["doc_id"])
 
 
 def sample_document() -> tuple[str, bytes]:
@@ -42,7 +59,7 @@ def sample_document() -> tuple[str, bytes]:
 
 def services():
     """Return (container, mode) where mode is 'REAL' or 'OFFLINE'."""
-    settings = get_settings()
+    settings = Settings(_env_file=ROOT / ".env")  # the kernel runs in notebooks/, so give the .env path explicitly
     if settings.openai_api_key and (settings.qdrant_url or settings.qdrant_path):
         ct = build_container(settings)
         arun(ct.store.ensure_collection())

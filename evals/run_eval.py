@@ -16,6 +16,7 @@ from pathlib import Path
 
 from app.config import Settings, get_settings
 from app.container import build_container
+from app.generation import build_user_prompt
 from app.db import Database
 from app.ingestion.service import IngestionService
 from app.ingestion.store import QdrantStore, VectorStore
@@ -45,6 +46,12 @@ def git_commit() -> str:
                               timeout=5).stdout.strip() or "unknown"
     except Exception:
         return "unknown"
+
+
+def chunks_in_prompt(question: str, raw_chunks, settings: Settings):
+    """The chunks the generator actually saw: raw top-k above the threshold, cut at the context cap."""
+    kept = [c for c in raw_chunks if c.score >= settings.similarity_threshold]
+    return build_user_prompt(question, kept, settings.max_context_chars)[1]
 
 
 async def evaluate_config(name: str, questions: list[dict], corpus_files: list[Path], settings: Settings, *,
@@ -96,7 +103,10 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
                    latency_ms=cached.last.get("latency_ms", resp.latency_ms) if resp.usage.input_tokens else 0)
         row["citations"] = [c.n for c in resp.citations]
         if use_judge and not resp.refused:
-            v = await judge_answer(cached, q["question"], [c.model_dump() for c in resp.retrieved_chunks], resp.answer,
+            # The judge must see exactly the chunks that were in the prompt: above the threshold and within the
+            # context cap, not the whole raw top-k.
+            in_prompt = chunks_in_prompt(q["question"], resp.retrieved_chunks, tuned)
+            v = await judge_answer(cached, q["question"], [c.model_dump() for c in in_prompt], resp.answer,
                                    q.get("reference_answer") if q["answerable"] else None)
             row.update(faithfulness=v.faithfulness, correctness=v.correctness, declines=v.declines,
                        judge_parse_error=v.parse_error, n_doc_claims=len(v.document_claims))

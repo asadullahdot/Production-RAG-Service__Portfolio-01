@@ -78,6 +78,7 @@ class QdrantStore:
         self._client = client
         self._sleep = sleep
         self.collection = collection or settings.qdrant_collection
+        self._ready = False  # set once ensure_collection() has succeeded; every operation retries it until then
 
     @property
     def client(self) -> AsyncQdrantClient:
@@ -119,15 +120,24 @@ class QdrantStore:
         if not await self._call(lambda: self.client.collection_exists(name)):
             await self._call(lambda: self.client.create_collection(
                 name, vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE)))
-            for key in (OWNER_KEY, DOC_KEY):  # no effect in embedded mode, needed for speed on a server
-                await self._call(lambda key=key: self.client.create_payload_index(
-                    name, field_name=key, field_schema=models.PayloadSchemaType.KEYWORD))
         info = await self._call(lambda: self.client.get_collection(name))
         size = info.config.params.vectors.size
         if size != dim:
             raise RuntimeError(f"Qdrant collection '{name}' has vector size {size}, expected {dim}")
+        have = set((info.payload_schema or {}).keys())
+        for key in (OWNER_KEY, DOC_KEY):  # also repairs a collection whose index creation was interrupted
+            if key not in have:  # no effect in embedded mode, needed for speed on a server
+                await self._call(lambda key=key: self.client.create_payload_index(
+                    name, field_name=key, field_schema=models.PayloadSchemaType.KEYWORD))
+        self._ready = True
+
+    async def _ensure_ready(self) -> None:
+        """A Qdrant outage at startup must not leave the service broken: retry the setup on first use."""
+        if not self._ready:
+            await self.ensure_collection()
 
     async def upsert(self, owner: str, items: list[VectorItem]) -> None:
+        await self._ensure_ready()
         batch = self.s.qdrant_upsert_batch
         for i in range(0, len(items), batch):
             points = []
@@ -140,6 +150,7 @@ class QdrantStore:
             await self._call(lambda points=points: self.client.upsert(self.collection, points=points, wait=True))
 
     async def query(self, owner, vector, top_k, doc_ids=None) -> list[Hit]:
+        await self._ensure_ready()
         res = await self._call(lambda: self.client.query_points(
             self.collection, query=vector, limit=top_k, query_filter=_owner_filter(owner, doc_ids=doc_ids),
             with_payload=True))
@@ -153,22 +164,26 @@ class QdrantStore:
 
     async def delete_document(self, owner: str, doc_id: str) -> None:
         """One filtered delete (owner AND doc); also removes the points of a half-written upload."""
+        await self._ensure_ready()
         flt = _owner_filter(owner, doc_id=doc_id)
         await self._call(lambda: self.client.delete(
             self.collection, points_selector=models.FilterSelector(filter=flt), wait=True))
 
     async def delete_owner(self, owner: str) -> None:
+        await self._ensure_ready()
         flt = _owner_filter(owner)
         await self._call(lambda: self.client.delete(
             self.collection, points_selector=models.FilterSelector(filter=flt), wait=True))
 
     async def count(self, owner: str) -> int:
+        await self._ensure_ready()
         res = await self._call(lambda: self.client.count(
             self.collection, count_filter=_owner_filter(owner), exact=True))
         return res.count
 
     async def ping(self) -> bool:
         try:
+            await self._ensure_ready()
             await self._call(lambda: self.client.get_collections())
             return True
         except UpstreamUnavailable:

@@ -16,9 +16,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import auth
 from app.config import Settings, get_settings
 from app.container import Container, build_container
-from app.errors import AppError, FileTooLarge, RateLimited, UpstreamUnavailable
+from app.errors import AppError, RateLimited, UpstreamUnavailable
 from app.logging_setup import log_event, new_request_id, request_id_var, setup_logging
 from app.llm_guard import deadline_var
+from app.upload_limit import UploadSizeLimit
 from app.schemas import (AskRequest, AskResponse, DocumentList, DocumentOut, ErrorResponse, HealthOut,
                          SignupRequest, TokenOut, UserOut)
 
@@ -66,6 +67,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.state.vector_db_checked = (0.0, False)
 
     # ------------------------------------------------------------------ middleware
+    app.add_middleware(UploadSizeLimit, max_bytes=settings.max_upload_bytes, max_mb=settings.max_upload_mb)  # inner: runs after request_context
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or new_request_id()
@@ -107,7 +109,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
 
     @app.exception_handler(StarletteHTTPException)
     async def http_handler(request: Request, exc: StarletteHTTPException):
-        code = {404: "not_found", 405: "invalid_request", 401: "unauthorized"}.get(exc.status_code, "invalid_request")
+        code = {404: "not_found", 405: "invalid_request", 401: "unauthorized", 413: "file_too_large"}.get(exc.status_code, "invalid_request")
         return _error(request_id_var.get(), exc.status_code, code, str(exc.detail))
 
     @app.exception_handler(Exception)
@@ -142,10 +144,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def upload_document(request: Request, file: UploadFile = File(...), owner_id: str = Depends(owner)):
         c: Container = request.app.state.container
         limit = c.settings.max_upload_bytes
-        declared = request.headers.get("content-length")
-        if declared and declared.isdigit() and int(declared) > limit + 1024 * 1024:
-            raise FileTooLarge(f"File exceeds the {c.settings.max_upload_mb} MB limit.")
-        data = await file.read(limit + 1)  # bounded read: never buffers more than limit + 1 bytes
+        data = await file.read(limit + 1)  # the body is already capped by UploadSizeLimit while it streams in
         row = await c.ingestion.upload(owner_id, file.filename or "", data, file.content_type)
         return DocumentOut(**row)
 
@@ -202,9 +201,10 @@ def _rate_key(request: Request, settings: Settings) -> str:
                 return f"user:{user_id}"
     ip = request.client.host if request.client else "unknown"
     if settings.behind_proxy:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            ip = forwarded.split(",")[0].strip()
+        # Proxies append the real peer on the right; the left side is whatever the client sent (spoofable).
+        parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+        if len(parts) >= settings.trusted_proxies:
+            ip = parts[-settings.trusted_proxies]
     return f"ip:{ip}"
 
 

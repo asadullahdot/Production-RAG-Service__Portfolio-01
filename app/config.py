@@ -21,7 +21,7 @@ INJECTION_PATTERNS = [
     r"ignore\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"disregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"forget\s+(all\s+|everything\s+|your\s+)?(previous|prior|above|earlier)?\s*(instructions?|rules?)",
-    r"(reveal|show|print|repeat|display|output)\s+(me\s+)?(your|the)\s+(system\s+)?(prompt|instructions|rules|configuration)",
+    r"(reveal|show|print|repeat|display|output)\s+(me\s+)?(your\s+(system\s+)?|the\s+system\s+)(prompt|instructions|rules|configuration)",
     r"what\s+(is|are)\s+your\s+(system\s+)?(prompt|instructions)",
     r"override\s+(your|the)\s+(instructions|rules|guidelines|safety)",
     r"new\s+instructions?\s*:",
@@ -31,11 +31,13 @@ INJECTION_PATTERNS = [
 JAILBREAK_PATTERNS = [
     r"\bDAN\b",
     r"do\s+anything\s+now",
-    r"developer\s+mode",
+    r"(^|[.!?]\s+)(please\s+)?(enable|enter|activate|switch\s+to|turn\s+on)\s+developer\s+mode",  # an order, not "how do I enable ..."
+    r"you\s+are\s+(now\s+)?in\s+developer\s+mode",
+    r"developer\s+mode\s+(enabled|activated)",
     r"jailbreak",
     r"pretend\s+(that\s+)?you\s+(are|have)\s+no\s+(rules|restrictions|limits|guidelines)",
     r"(act|behave|respond)\s+as\s+(if\s+)?(you\s+(are|were)\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered)",
-    r"without\s+(any\s+)?(restrictions|filters|limitations|guardrails)",
+    r"(answer|respond|reply|act|behave|operate|speak|talk)\w*\s+(\w+\s+){0,3}?without\s+(any\s+)?(restrictions|filters|limitations|guardrails)",
     r"you\s+are\s+no\s+longer\s+bound",
     r"roleplay\s+as\s+.*(no\s+rules|evil|unrestricted)",
 ]
@@ -70,6 +72,7 @@ class Settings(BaseSettings):
     # general
     env: str = "dev"
     behind_proxy: bool = False
+    trusted_proxies: int = Field(default=1, ge=1)  # proxies in front of us; the client IP is that many entries from the right of X-Forwarded-For
     demo_fault: str = "none"  # none | llm_timeout | llm_429 | vector_db_down
     request_deadline_s: float = 60.0
 

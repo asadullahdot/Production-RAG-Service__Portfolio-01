@@ -46,7 +46,7 @@ class IngestionService:
         self.allowed_types = allowed_types or {t.strip() for t in settings.allowed_file_types.split(",") if t.strip()}
         self.chunk_size = chunk_size or settings.chunk_size
         self.chunk_overlap = chunk_overlap if chunk_overlap is not None else settings.chunk_overlap
-        self._locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._locks: dict[tuple[str, str], list] = {}  # key -> [lock, users]; removed when idle
 
     # ------------------------------------------------------------------ upload
     async def upload(self, owner_id: str, filename: str, data: bytes, content_type: str | None = None) -> dict:
@@ -54,19 +54,25 @@ class IngestionService:
         file_hash = await run_in_threadpool(lambda: hashlib.sha256(data).hexdigest())
 
         key = (owner_id, file_hash)
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:  # one in-flight ingest per (owner, hash); the unique index is the final guard
-            return await self._ingest(owner_id, filename, data, file_type, file_hash)
+        entry = self._locks.setdefault(key, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:  # one in-flight ingest per (owner, hash); the unique index is the final guard
+                return await self._ingest(owner_id, filename, data, file_type, file_hash)
+        finally:
+            entry[1] -= 1
+            if entry[1] == 0:
+                self._locks.pop(key, None)
 
     async def _ingest(self, owner_id: str, filename: str, data: bytes, file_type: str, file_hash: str) -> dict:
         existing = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
         if existing:
             raise DuplicateDocument(details={"doc_id": existing["doc_id"]})
 
-        extracted = await run_in_threadpool(extract, data, file_type)
+        extracted = await run_in_threadpool(extract, data, file_type, self.s.max_pages)
         if extracted.total_chars < self.s.min_extracted_chars:
             raise NoText()
-        if extracted.num_pages > self.s.max_pages:
+        if file_type in ("pdf", "pptx") and extracted.num_pages > self.s.max_pages:  # DOCX/MD sections are not pages: the chunk cap bounds them
             raise FileTooLarge(f"The document has {extracted.num_pages} pages (max {self.s.max_pages}).")
 
         for section in extracted.sections:  # B6: flag instruction-like text; it stays data

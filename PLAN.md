@@ -185,7 +185,7 @@ Portfolio_01/
 ├── requirements.txt (pinned ==)   .env.example   .gitignore   Dockerfile (B8)
 ```
 
-Run: `uvicorn app.main:app`. Evals call the services directly with internal owners and their own SQLite file `data/eval.db`.
+Run: `uvicorn app.main:app`. Evals call the services directly with internal owners and their own SQLite files `data/eval_A.db` / `data/eval_B.db`.
 
 ---
 
@@ -199,12 +199,12 @@ Run: `uvicorn app.main:app`. Evals call the services directly with internal owne
 | Models | `LLM_MODEL` gpt-6-luna, `JUDGE_MODEL` gpt-6.1-terra, `EMBEDDING_MODEL` text-embedding-3-small, `EMBEDDING_DIM` 1536 | |
 | Generation | `LLM_REASONING_EFFORT` (low), `LLM_MAX_OUTPUT_TOKENS` (4000), `JUDGE_REASONING_EFFORT` (medium) | reasoning tokens count toward the cap; if a response is `incomplete`, retry once with double the cap, then 503. **`temperature` is NOT supported: both models return HTTP 400 "Unsupported parameter: 'temperature'" [VERIFIED 24 Nov: live call]. Never send it; there is no temperature setting.** Determinism comes from fixed reasoning effort plus the disk cache |
 | Qdrant | `QDRANT_URL`, `QDRANT_PATH` (embedded mode, tests only), `QDRANT_COLLECTION` (rag_chunks), `QDRANT_TIMEOUT_S` (15), `QDRANT_UPSERT_BATCH` (100) | `QDRANT_PATH` wins when set. Use REST, not gRPC (Hugging Face blocks other ports) |
-| SQLite | `SQLITE_PATH` (./data/app.db) | evals override with ./data/eval.db |
+| SQLite | `SQLITE_PATH` (./data/app.db) | evals override with ./data/eval_<config>.db |
 | Chunking / retrieval | `CHUNK_SIZE` 1000, `CHUNK_OVERLAP` 200, `TOP_K` 5, `TOP_K_MAX` 20, `SIMILARITY_THRESHOLD` (tuned, §12) | threshold is on similarity, not distance |
 | Limits | `ALLOWED_FILE_TYPES` (pdf,docx; B5 adds txt,md,pptx), `MAX_UPLOAD_MB` 10, `MAX_PAGES` 200, `MAX_CHUNKS_PER_DOC` 1500, `MIN_EXTRACTED_CHARS` ~50, `MAX_QUESTION_CHARS` 1000, `MAX_CONTEXT_CHARS` (derived), `EMBED_BATCH_SIZE` ≤100 | over `MAX_PAGES` or `MAX_CHUNKS_PER_DOC` = reject with 413, never truncate. OpenAI allows 2048 inputs and 300,000 tokens per embedding request, so 100 chunks is far below |
 | Timeouts / retries | `LLM_TIMEOUT_S` 30, `EMBED_TIMEOUT_S` 30, `DB_TIMEOUT_S` 10, `REQUEST_DEADLINE_S` 60 (uploads get 3×), `MAX_RETRIES` 3, `RETRY_BACKOFF_S` 1, `RETRY_BACKOFF_MAX_S` 20 | retry only 429, 5xx, timeouts; never other 4xx; never `insufficient_quota`. If a 429 has `Retry-After`, wait at least that long. The models are built with `max_retries=0` so only our policy applies |
 | Concurrency | `LLM_MAX_CONCURRENCY` 4, `EMBED_MAX_CONCURRENCY` 4, `JUDGE_MAX_CONCURRENCY` 2, `EVAL_MAX_CONCURRENCY` 2 | **[OWNER]** keep below the OpenAI tier's limits (check the dashboard Limits page). Luna's published defaults: Build 5,000 RPM / 2M TPM; which tier the owner has is unknown |
-| Rate limit | `RATE_LIMIT_PER_MIN` (20) | key = user id if the token verifies, else client IP. Applies to `/ask`, `/documents` (POST), `/auth/*`. Exempt: `/health`, `GET /`, static files, `GET /documents` |
+| Rate limit | `RATE_LIMIT_PER_MIN` (20), `TRUSTED_PROXIES` (1) | key = user id if the token verifies, else client IP. Applies to `/ask`, `/documents` (POST), `/auth/*`. Exempt: `/health`, `GET /`, static files, `GET /documents` |
 | Demo | `DEMO_FAULT` (none \| llm_timeout \| llm_429 \| vector_db_down) | makes `llm_guard`/`store` raise that failure so 503 cases can be shown live |
 | Auth | `JWT_EXPIRE_MINUTES` (60) | HS256 is fixed in code |
 
