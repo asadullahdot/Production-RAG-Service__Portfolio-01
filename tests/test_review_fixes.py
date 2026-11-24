@@ -595,7 +595,8 @@ def test_ask_body_is_capped_while_it_streams(tmp_path):
     huge = {"question": "x" * (200 * 1024)}
     r = e.client.post("/ask", json=huge)
     assert r.status_code == 413
-    assert e.client.post("/ask", json={"question": "hello", "doc_ids": ["a"] * 101}).status_code == 422
+    assert e.client.post("/ask", json={"question": "hello", "doc_ids": ["a"] * 1001}).status_code == 422
+    assert e.client.post("/ask", json={"question": "hello", "doc_ids": ["a"] * 150}).status_code == 404  # a long list of ids is fine (unknown ids are a 404, not a 422)
 
 
 def test_unauthenticated_upload_is_rejected_before_its_body_is_read(tmp_path):

@@ -126,6 +126,16 @@ def test_malicious_and_corrupt_files_are_rejected(tmp_path):
     assert e.count("local") == 0                                           # nothing from any of them was stored
 
 
+def test_short_byte_runs_that_look_like_a_name_inside_binary_data_do_not_reject_a_pdf(tmp_path):
+    """Review finding: "/JS" is 3 bytes and occurs by chance in compressed streams (about 0.5 per 10 MB of random data)."""
+    e = Env(tmp_path)
+    pdf = make_pdf(["A perfectly ordinary page of text that is long enough to count as a document."])
+    assert pdf.startswith(b"%PDF-1.4\n")
+    noisy = pdf.replace(b"%PDF-1.4\n", b"%PDF-1.4\n% /JS /JS\n/JS (noise) /JS\n", 1)
+    assert post(e.client, noisy, "scan.pdf").status_code == 201
+    assert guardrails._PDF_ACTIVE.search(b"/S /JavaScript /JS (app.alert(1))")  # a real JavaScript action is still caught
+
+
 def test_a_pdf_that_merely_mentions_javascript_in_its_text_is_not_rejected(tmp_path):
     """The check looks for PDF *names* (/JavaScript), not the word in visible text."""
     e = Env(tmp_path)

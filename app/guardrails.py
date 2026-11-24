@@ -49,8 +49,10 @@ def validate_upload(filename: str, content_type: str | None, data: bytes, settin
     return file_type
 
 
-# Names a PDF uses for active content (checked on the raw bytes; objects compressed into streams are not inspected).
-_PDF_ACTIVE = re.compile(rb"/(JavaScript|Launch)(?![A-Za-z])|/JS(?![A-Za-z])")
+# Names a PDF uses for active content, checked on the raw bytes (objects compressed into streams are not inspected, and
+# neither are names written with #-escapes). Only long names are used: a short one such as "/JS" appears by chance inside
+# compressed image data, which would reject harmless PDFs. A JavaScript action always carries "/S /JavaScript".
+_PDF_ACTIVE = re.compile(rb"/(JavaScript|Launch)(?![A-Za-z])")
 
 
 def _check_magic(file_type: str, data: bytes) -> None:

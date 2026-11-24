@@ -81,7 +81,7 @@ Errors: `{"error": {"code", "message", "request_id", "details"?}}`. Full contrac
 
 ## Configuration
 
-All settings are environment variables read in `app/config.py` (names in `.env.example`; full table in [PLAN.md §6](PLAN.md)). Highlights: `SIMILARITY_THRESHOLD`, `TOP_K`, `CHUNK_SIZE`/`CHUNK_OVERLAP`, `MAX_UPLOAD_MB`, `RATE_LIMIT_PER_MIN`, `LLM_MAX_CONCURRENCY`, `MAX_RETRIES`, `AUTH_ENABLED`, `DEMO_FAULT` (demo only: `llm_timeout`, `llm_429`, `vector_db_down`).
+All settings are environment variables read in `app/config.py` (names in `.env.example`; full table in [PLAN.md §6](PLAN.md)). Highlights: `SIMILARITY_THRESHOLD`, `TOP_K`, `CHUNK_SIZE`/`CHUNK_OVERLAP`, `MAX_UPLOAD_MB`, `RATE_LIMIT_PER_MIN`, `LLM_MAX_CONCURRENCY`, `MAX_RETRIES`, `AUTH_ENABLED`, `DEMO_FAULT` (demo only, refused when `ENV=production`: `llm_timeout`, `llm_429`, `embed_timeout`, `embed_429`, `vector_db_down`).
 
 ## Project layout
 

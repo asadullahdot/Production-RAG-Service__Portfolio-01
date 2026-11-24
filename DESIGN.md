@@ -14,7 +14,7 @@ FastAPI, async, **one uvicorn worker**. `app/main.py` holds routes and middlewar
 
 ```mermaid
 flowchart TD
-  UI[Plain HTML/JS frontend] --> API[FastAPI routes + middleware: request id, rate limit, body-size limit]
+  UI[KNOWLEX React frontend] --> API[FastAPI routes + middleware: request id, rate limit, body-size limit]
   API --> G[Guardrails: upload, input, output]
   API --> ING[Ingestion: validate, hash, extract, chunk, embed, store]
   API --> ASK[AskService: retrieve, prompt, generate, cite]
