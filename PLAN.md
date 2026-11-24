@@ -339,7 +339,7 @@ Every request logs `X-Request-ID`, method, path, status, latency, error code and
 
 **Golden set** (`evals/golden_set.json`, format in `evals/README_GOLDEN.md`): about **30** questions (minimum 25): ≥10 unanswerable (include near-miss in-domain ones), ≥5 reworded, ≥5 multi-part. Fields: `id, question, type (single | reworded | multi_part | unanswerable), answerable, source_doc, source_page, evidence, reference_answer`. `evidence` is a verbatim 10–20-word span (a list for multi-part). **No chunk ids**, so configs A and B stay comparable.
 
-- A retrieved chunk is **relevant** if it comes from `source_doc` and contains the span after normalisation (NFKC, lowercase, collapse whitespace, drop soft hyphens and hyphenation line breaks), **or** at least 80 % of the span's words appear in order in the chunk.
+- A retrieved chunk is **relevant** if it comes from `source_doc` and contains the span after normalisation (NFKC, lowercase, collapse whitespace, drop soft hyphens and hyphenation line breaks), **or** at least 80 % of the span's words appear in order **inside a window of 1.5× the span length**, and every number in the span is among them (so a chunk that only shares common words, or states a different figure, is not relevant).
 - A labelling script checks that **every** span matches at least one chunk in **both** configs; relabel otherwise.
 - The author wrote the labels (say so in EVAL.md).
 - **Split:** stratified ~40 % dev / 60 % test (seed 7), with ≥4 unanswerable and ≥8 answerable in dev. Tune on dev; **report only on test**.
