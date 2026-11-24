@@ -16,13 +16,22 @@ export default function AuthForm({ onSignedIn }) {
     e.preventDefault();
     setError("");
     setBusy(true);
+    let created = false;
     try {
       const address = email.trim();
-      if (signup) await api("/auth/signup", json({ email: address, password }));
+      if (signup) {
+        await api("/auth/signup", json({ email: address, password }));
+        created = true;
+      }
       const tok = await api("/auth/login", { method: "POST", body: new URLSearchParams({ username: address, password }) });
       onSignedIn(tok.access_token, address);
     } catch (err) {
-      setError(err.message);
+      if (created) {  // the account exists now, so a retry must log in; signing up again would say "email taken"
+        setMode("login");
+        setError(`Your account was created, but signing in failed (${err.message}) Press Log in to try again.`);
+      } else {
+        setError(err.message);
+      }
       setBusy(false);
     }
   }

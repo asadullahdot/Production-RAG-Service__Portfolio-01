@@ -12,6 +12,7 @@ export default function App() {
   const [session, setSession] = useState(loadSession);
   const [notices, setNotices] = useState([]);
   const nextId = useRef(1);
+  const [attempt, setAttempt] = useState(0);  // bumped by "Try again" to repeat the start-up check
 
   // Errors stay until dismissed; success messages fade after a few seconds.
   const notify = useCallback((kind, text) => {
@@ -46,7 +47,7 @@ export default function App() {
       setBoot({ loading: false, authEnabled, fileTypes, offline });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   const signedIn = !boot.authEnabled || !!session.token;
 
@@ -75,12 +76,17 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl px-4 py-4">
         <div className="mb-3 space-y-2" aria-live="polite">
-          {boot.offline && <Notice kind="error">Cannot reach the server. Check that it is running, then reload the page.</Notice>}
           {notices.map((n) => <Notice key={n.id} kind={n.kind} onClose={() => dismiss(n.id)}>{n.text}</Notice>)}
         </div>
 
         {boot.loading ? (
           <p className="muted py-10 text-center">Loading…</p>
+        ) : boot.offline ? (
+          <section role="alert" className="card mx-auto mt-6 max-w-md text-center">
+            <p className="text-lg font-semibold">Cannot reach the server</p>
+            <p className="muted mt-1">Check your connection, or that the service is running, then try again.</p>
+            <button type="button" className="btn-primary mt-4" onClick={() => { setBoot((b) => ({ ...b, loading: true })); setAttempt((n) => n + 1); }}>Try again</button>
+          </section>
         ) : !signedIn ? (
           <AuthForm onSignedIn={(token, email) => { saveSession(token, email); setSession({ token, email }); }} />
         ) : (

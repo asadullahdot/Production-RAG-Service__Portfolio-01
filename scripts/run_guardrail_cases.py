@@ -43,8 +43,15 @@ def run_http(args, cases: list[dict]) -> list[bool]:
         with httpx.Client(base_url=args.base_url, timeout=60) as probe:
             if probe.get("/health").json().get("auth_enabled"):
                 probe.post("/auth/signup", json={"email": args.email, "password": args.password})  # 409 if it already exists
-                tok = probe.post("/auth/login", data={"username": args.email, "password": args.password}).json()
-                headers = {"Authorization": f"Bearer {tok['access_token']}"}
+                login = probe.post("/auth/login", data={"username": args.email, "password": args.password})
+                if login.status_code != 200:
+                    try:
+                        why = login.json()["error"]["message"]
+                    except Exception:
+                        why = login.text[:200]
+                    raise SystemExit(f"Could not log in as {args.email} (HTTP {login.status_code}: {why}). "
+                                     "Pass --token <jwt>, or --email/--password of an existing account.")
+                headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     results = []
     with httpx.Client(base_url=args.base_url, headers=headers, timeout=60) as client:
         docs = client.get("/documents")
