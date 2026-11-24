@@ -68,7 +68,7 @@ Tags: **[OWNER]** needs the owner. **[VERIFIED date]** checked by reading vendor
 - **Tests and notebooks** use Qdrant embedded mode (`QDRANT_PATH=:memory:`), so there is no custom in-memory store class. Payload indexes have no effect in embedded mode.
 - **Evals** use the cloud collection `<QDRANT_COLLECTION>_eval` with owners `eval_A` / `eval_B`, wiped with an owner-filtered delete before each run.
 - **Free cluster limits** **[VERIFIED 24 Nov: Qdrant docs]:** 1 node, 0.5 vCPU, 1 GB RAM, 4 GB disk; suspended after 1 week of inactivity, deleted later (two Qdrant pages say 3 or 4 weeks). Reactivation is manual in the console.
-- **Client version:** `langchain-qdrant` 1.2.0 requires `qdrant-client>=1.15.1,<1.16`, so pin `qdrant-client` 1.15.1 (not the newer 1.20.0).
+- **Client version:** `qdrant-client` 1.20.0, matching Qdrant Cloud's server 1.20.2 (the client warns when the major versions differ or the minors are more than 1 apart). The earlier pin to 1.15.1 existed only because `langchain-qdrant` 1.2.0 requires `<1.16`; that package is no longer used, so it is neither installed nor listed. Re-checked 24 Nov 2026: all tests and a live upload/ask/delete run pass on 1.20.0.
 - **Async:** `AsyncQdrantClient` is used directly (true async, also in embedded mode). `QdrantVectorStore` was rejected for the reasons in the Framework row.
 
 ---

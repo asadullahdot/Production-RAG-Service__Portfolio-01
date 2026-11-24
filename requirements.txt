@@ -9,7 +9,7 @@ openai==3.57.0
 pydantic==2.14.4
 pydantic-settings==2.16.3
 PyJWT==2.15.1
-qdrant-client==1.15.1
+qdrant-client==1.20.0
 pypdf==7.1.1
 pytest==9.2.0
 pytest-asyncio==1.5.0
