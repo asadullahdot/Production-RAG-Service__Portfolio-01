@@ -51,9 +51,12 @@ def _clean_name(name: str) -> str:
 
 def _escape(text: str) -> str:
     """Neutralise anything that looks like a <context> tag: full-width brackets, odd spacing, invisible characters."""
-    text = unicodedata.normalize("NFKC", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
-    return re.sub(r"<[\s/]*context[^>]*>", "[context-tag-removed]", text, flags=re.IGNORECASE)
+    shadow = unicodedata.normalize("NFKC", text)
+    shadow = "".join(ch for ch in shadow if unicodedata.category(ch) != "Cf")
+    pattern = re.compile(r"<[\s/]*context[^>]*>", re.IGNORECASE)
+    if not pattern.search(shadow):
+        return text  # ordinary chunk: the document's own characters (10^3, H2O, ...) reach the model untouched
+    return pattern.sub("[context-tag-removed]", shadow)  # only a chunk with a lookalike tag is normalised
 
 
 def build_user_prompt(question: str, chunks: list[RetrievedChunk], max_chars: int) -> tuple[str, list[RetrievedChunk]]:

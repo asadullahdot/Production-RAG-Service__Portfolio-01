@@ -104,15 +104,16 @@ class QdrantStore:
             return exc.status_code >= 500 or exc.status_code == 429
         return isinstance(exc, (asyncio.TimeoutError, ConnectionError, OSError, ResponseHandlingException))
 
-    async def _call(self, make_call, retries: int | None = None):
+    async def _call(self, make_call, retries: int | None = None, timeout: float | None = None):
         """Run one Qdrant call with a timeout and bounded jittered retries; any failure becomes a 503."""
         max_retries = self.s.max_retries if retries is None else retries
+        timeout_cap = timeout
         if self.s.demo_fault == "vector_db_down":
             raise UpstreamUnavailable()
         attempt = 0
         while True:
             deadline = deadline_var.get()  # the one request deadline also covers Qdrant
-            timeout = self.s.qdrant_timeout_s
+            timeout = self.s.qdrant_timeout_s if timeout_cap is None else min(self.s.qdrant_timeout_s, timeout_cap)
             if deadline is not None:
                 if time.monotonic() >= deadline:
                     raise UpstreamUnavailable()
@@ -225,8 +226,8 @@ class QdrantStore:
 
     async def ping(self) -> bool:
         try:
-            await self._ensure_ready()
-            await self._call(lambda: self.client.get_collections(), retries=0)  # a probe: one attempt
+            # A probe is ONE short attempt and never runs collection setup (that can take much longer).
+            await self._call(lambda: self.client.get_collections(), retries=0, timeout=5.0)
             return True
         except UpstreamUnavailable:
             return False

@@ -60,9 +60,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         except Exception as exc:  # the UI/docs should still start; requests will return 503
             log_event(logger, "vector collection not ready at startup", logging.WARNING, error=str(exc)[:200])
         yield
-        for closer in (app.state.container.db.close, app.state.container.store.close):  # release the SQLite file and Qdrant client/lock
+        for owner_obj in (app.state.container.db, app.state.container.store):  # release the SQLite file and Qdrant client/lock
             try:
-                result = closer()
+                closer = getattr(owner_obj, "close", None)
+                result = closer() if closer else None
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as exc:

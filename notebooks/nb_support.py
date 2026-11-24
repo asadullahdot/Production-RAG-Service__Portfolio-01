@@ -60,6 +60,9 @@ def sample_document() -> tuple[str, bytes]:
 def services():
     """Return (container, mode) where mode is 'REAL' or 'OFFLINE'."""
     settings = Settings(_env_file=ROOT / ".env")  # the kernel runs in notebooks/, so give the .env path explicitly
+    # Notebooks keep their own registry file and Qdrant collection, never the live ones.
+    settings = settings.model_copy(update={"sqlite_path": str(ROOT / "data" / "notebooks.db"),
+                                           "qdrant_collection": settings.qdrant_collection + "_nb"})
     if settings.openai_api_key and (settings.qdrant_url or settings.qdrant_path):
         ct = build_container(settings)
         arun(ct.store.ensure_collection())

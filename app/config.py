@@ -22,14 +22,15 @@ INJECTION_REFUSAL_TEXT = "I can't follow instructions that try to change my rule
 HARD_INJECTION_PATTERNS = [
     r"ignore\s+(all\s+|any\s+|the\s+|your\s+|of\s+)*(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"disregard\s+(all\s+|any\s+|the\s+|your\s+|of\s+)*(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
-    r"forget\s+(all\s+|everything\s+|your\s+)?(previous|prior|above|earlier)?\s*(instructions?|rules?)",
+    r"forget\s+(all\s+|everything\s+|your\s+)(previous\s+|prior\s+|above\s+|earlier\s+)?(instructions?|rules?)",
+    r"forget\s+(previous|prior|above|earlier)\s+(instructions?|rules?)",
     r"ignore\s+(everything|anything)\s+(above|before|you\s+were\s+told)",
     r"override\s+(your|the)\s+(instructions|rules|guidelines|safety)",
     r"new\s+instructions?\s*:",
     r"(give|tell|show|reveal|share|print|send)\s+(me\s+)?(your|the\s+system'?s?|the\s+server'?s?)\s+(api[\s_-]?key|secret[\s_-]?key|access\s+token|password|credentials)",
-    r"what\s+(is|are)\s+your\s+(api[\s_-]?key|secret|password|credentials)",
 ]
 SOFT_INJECTION_PATTERNS = [
+    r"what\s+(is|are)\s+your\s+(api[\s_-]?key|secret|password|credentials)",  # also "what is your password policy?"
     r"(reveal|show|print|repeat|display|output)\s+(me\s+)?(your\s+(system\s+)?|the\s+system\s+)(prompt|instructions|rules|configuration)",
     r"what\s+(is|are)\s+your\s+(system\s+)?(prompt|instructions)",
 ]

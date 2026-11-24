@@ -107,7 +107,8 @@ class IngestionService:
                 row = await run_in_threadpool(
                     lambda: self.db.add_document(
                         doc_id=doc_id, owner_id=owner_id, file_name=filename, file_type=file_type,
-                        num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash))
+                        num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash,
+                        uploaded_at=uploaded_at))  # the same timestamp as the vector payload
             except sqlite3.IntegrityError as exc:  # lost a race on the unique (owner, hash) index
                 other = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
                 raise DuplicateDocument(details={"doc_id": other["doc_id"] if other else None}) from exc
