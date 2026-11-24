@@ -68,7 +68,20 @@ API_KEY_REGEXES = [
     r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}",
 ]
 # B6: instruction-like text hidden inside documents (flagged, still treated as data).
-DOCUMENT_INSTRUCTION_PATTERNS = INJECTION_PATTERNS + [
+DOCUMENT_INSTRUCTION_PATTERNS = INJECTION_PATTERNS + HARD_JAILBREAK_PATTERNS + [
+    # B6: text inside a document that talks TO an AI. Flag only: the document is still accepted and stays data.
+    r"(note|notice|message|memo|directive|instruction)s?\s+(to|for)\s+(the\s+)?(ai|a\.i\.|assistant|llm|chatbot|language\s+model)s?",
+    r"(?<![a-z])(ai|assistants?(?!\s+(manager|professor|director|editor|principal|teacher|secretary|engineer|coach|registrar|lecturer|clerk|chef|nurse))|llms?|chatbots?|language\s+models?)(?![a-z])[^.]{0,40}?\s(must|should|shall|will)\s+(always\s+|only\s+|now\s+)?(answer|respond|reply|output|print|cite|reveal|append|ignore|obey)",
+    r"(system|admin(istrator)?)\s*:\s*(the\s+user|you|answer|respond|ignore)",
+    r"</?\s*context\s*>",  # a document containing the literal tag we use to fence its text off
+    r"(from\s+now\s+on|starting\s+now|henceforth),?\s+you\s+(are|will|must|should|shall)",
+    r"(assistant|ai|chatbot)\s*:\s*(respond|answer|reply|say|output|print|append|ignore|always|never|tell|do\s+not)",
+    r"(^|[.!?]\s+)user\s*:.{0,200}(assistant|ai)\s*:",
+    r"system\s+override",
+    r"overrides?\s+(all\s+|any\s+)?(your|the|other)\s+(other\s+|previous\s+)?(instructions|rules|guidelines)",
+    r"(append|add|include|insert|prepend)\s[^.]{0,80}\s(to|in|at)\s[^.]{0,30}your\s+(answer|reply|response|output)",
+    r"cite\s+this\s+(document|slide|page|file)\s+as\s+(proof|evidence|a\s+source)",
+    r"(do\s+not|never|don't)\s+(reveal|tell|mention|disclose)\s+(to\s+the\s+user\s+)?that\s+(this|these|the)\s+(document|text|instructions?)",
     r"you\s+must\s+(now\s+)?(answer|respond|reply)\s+(only\s+)?(with|in)",
     r"(always|only)\s+(answer|respond|reply)\s+(with\s+)?[\"']?(yes|no)",
     r"as\s+an?\s+ai\s+(model|assistant)\s*,?\s*(you\s+)?(must|should|will)",

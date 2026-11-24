@@ -29,7 +29,9 @@ logger = logging.getLogger("rag.ingestion")
 
 
 def doc_out(row: dict) -> dict:
-    return {k: row[k] for k in ("doc_id", "file_name", "file_type", "num_chunks", "num_pages", "uploaded_at", "file_hash")}
+    out = {k: row[k] for k in ("doc_id", "file_name", "file_type", "num_chunks", "num_pages", "uploaded_at", "file_hash")}
+    out["flagged"] = bool(row.get("flagged", 0))
+    return out
 
 
 def vector_ids(doc_id: str, n: int) -> list[str]:
@@ -77,9 +79,11 @@ class IngestionService:
         if file_type in ("pdf", "pptx") and extracted.num_pages > self.s.max_pages:  # DOCX/MD sections are not pages: the chunk cap bounds them
             raise FileTooLarge(f"The document has {extracted.num_pages} pages (max {self.s.max_pages}).")
 
+        flagged = False
         for section in extracted.sections:  # B6: flag instruction-like text; it stays data
             hits = guardrails.scan_document_text(section.page_content)
             if hits:
+                flagged = True
                 log_event(logger, "document contains instruction-like text (kept as data)", logging.WARNING,
                           file_name=filename, page=section.metadata["page"], patterns=len(hits))
 
@@ -108,7 +112,7 @@ class IngestionService:
                     lambda: self.db.add_document(
                         doc_id=doc_id, owner_id=owner_id, file_name=filename, file_type=file_type,
                         num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash,
-                        uploaded_at=uploaded_at))  # the same timestamp as the vector payload
+                        uploaded_at=uploaded_at, flagged=flagged))  # the same timestamp as the vector payload
             except sqlite3.IntegrityError as exc:  # lost a race on the unique (owner, hash) index
                 other = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
                 raise DuplicateDocument(details={"doc_id": other["doc_id"] if other else None}) from exc

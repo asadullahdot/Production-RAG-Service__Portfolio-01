@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS documents (
     num_pages   INTEGER NOT NULL,
     num_chunks  INTEGER NOT NULL,
     file_hash   TEXT NOT NULL,
-    uploaded_at TEXT NOT NULL
+    uploaded_at TEXT NOT NULL,
+    flagged     INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_owner_hash ON documents(owner_id, file_hash);
 CREATE INDEX IF NOT EXISTS ix_documents_owner ON documents(owner_id);
@@ -49,6 +50,9 @@ class Database:
             if path != ":memory:":
                 self._conn.execute("PRAGMA journal_mode = WAL")
             self._conn.executescript(SCHEMA)
+            columns = {row[1] for row in self._conn.execute("PRAGMA table_info(documents)")}
+            if "flagged" not in columns:  # a database created before B6
+                self._conn.execute("ALTER TABLE documents ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0")
             self._conn.commit()
 
     # ---- helpers
@@ -73,11 +77,13 @@ class Database:
 
     # ---- documents registry
     def add_document(self, *, doc_id: str, owner_id: str, file_name: str, file_type: str,
-                     num_pages: int, num_chunks: int, file_hash: str, uploaded_at: str | None = None) -> dict:
+                     num_pages: int, num_chunks: int, file_hash: str, uploaded_at: str | None = None,
+                     flagged: bool = False) -> dict:
         uploaded_at = uploaded_at or now_iso()
         self._run(
-            "INSERT INTO documents VALUES (?,?,?,?,?,?,?,?)",
-            (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at),
+            "INSERT INTO documents (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at, flagged)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at, int(flagged)),
             write=True,
         )
         return self.get_document(owner_id, doc_id)  # type: ignore[return-value]

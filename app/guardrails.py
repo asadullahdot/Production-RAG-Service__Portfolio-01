@@ -49,10 +49,16 @@ def validate_upload(filename: str, content_type: str | None, data: bytes, settin
     return file_type
 
 
+# Names a PDF uses for active content (checked on the raw bytes; objects compressed into streams are not inspected).
+_PDF_ACTIVE = re.compile(rb"/(JavaScript|Launch)(?![A-Za-z])|/JS(?![A-Za-z])")
+
+
 def _check_magic(file_type: str, data: bytes) -> None:
     if file_type == "pdf":
         if not data.lstrip()[:5].startswith(b"%PDF-"):
             raise UnsupportedType("File content is not a PDF.")
+        if _PDF_ACTIVE.search(data):  # B6: JavaScript or a launch action is active content, not a document
+            raise MaliciousFile("PDF files with embedded JavaScript or launch actions are not accepted.")
     elif file_type in _ZIP_REQUIRED:
         if not data.startswith(b"PK"):
             raise UnsupportedType(f"File content is not a valid .{file_type} file.")
