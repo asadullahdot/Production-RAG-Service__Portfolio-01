@@ -2,7 +2,7 @@ import { useState } from "react";
 import { reasonText, sourcePreview, splitAnswer, unitLabel } from "../lib.js";
 
 // One question and its answer. Everything from the server is rendered as React text, never as HTML.
-export default function Turn({ turn }) {
+export default function Turn({ turn, onTrace }) {
   const [open, setOpen] = useState(false);  // Sources start closed; clicking a [n] chip or the heading opens them
   const [flash, setFlash] = useState(null);
   const r = turn.result;
@@ -57,6 +57,9 @@ export default function Turn({ turn }) {
             </p>
             <p className="muted mt-3">
               {r.num_retrieved} {r.num_retrieved === 1 ? "chunk" : "chunks"} retrieved · {(r.latency_ms / 1000).toFixed(1)} s · {r.usage.input_tokens + r.usage.output_tokens} tokens
+              {onTrace && r.request_id && (
+                <> · <button type="button" onClick={() => onTrace(r.request_id)} className="cursor-pointer underline decoration-dotted underline-offset-2 hover:text-indigo-600 dark:hover:text-indigo-300">Trace</button></>
+              )}
             </p>
 
             {r.retrieved_chunks.length > 0 && (

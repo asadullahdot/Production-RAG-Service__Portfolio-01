@@ -79,3 +79,43 @@ describe("resolveTheme", () => {
   });
   it("ignores a corrupt saved value", () => expect(resolveTheme("purple", true)).toBe("dark"));
 });
+
+import { formatCost, formatMs, formatPercent, spanDetail, statusTone, stepLabel, waterfallGeometry } from "./lib.js";
+
+describe("monitoring formatting", () => {
+  it("formats milliseconds and seconds", () => {
+    expect(formatMs(null)).toBe("–");
+    expect(formatMs(850.4)).toBe("850 ms");
+    expect(formatMs(2400)).toBe("2.4 s");
+    expect(formatMs(15000)).toBe("15 s");
+  });
+  it("formats percentages and costs without rounding small values to zero", () => {
+    expect(formatPercent(0)).toBe("0.0%");
+    expect(formatPercent(0.0033)).toBe("0.33%");
+    expect(formatPercent(0.125)).toBe("12.5%");
+    expect(formatCost(0)).toBe("$0");
+    expect(formatCost(0.00000071)).toBe("<$0.0001");
+    expect(formatCost(0.00042)).toBe("$0.0004");
+    expect(formatCost(1.5)).toBe("$1.50");
+  });
+  it("tones status codes and names steps", () => {
+    expect([200, 201, 429, 404, 503].map(statusTone)).toEqual(["ok", "ok", "warn", "warn", "bad"]);
+    expect(stepLabel("vector_search")).toBe("Vector search");
+    expect(stepLabel("something_new")).toBe("something_new");
+  });
+});
+
+describe("trace view helpers", () => {
+  it("places bars inside the track and keeps very short ones visible", () => {
+    const g = waterfallGeometry([{ offset_ms: 0, duration_ms: 1000 }, { offset_ms: 500, duration_ms: 0.1 }, { offset_ms: 990, duration_ms: 500 }], 1000);
+    expect(g[0]).toEqual({ left: 0, width: 100 });
+    expect(g[1].width).toBeGreaterThanOrEqual(0.8);
+    expect(g[2].left + g[2].width).toBeLessThanOrEqual(100);
+    expect(waterfallGeometry([{ offset_ms: 0, duration_ms: 5 }], 0)[0].width).toBeLessThanOrEqual(100);
+  });
+  it("summarises span attributes", () => {
+    expect(spanDetail({ model: "gpt-6-luna", "tokens.input": 600, "tokens.output": 83, retries: 1 })).toBe("gpt-6-luna · 600 → 83 tokens · 1 retry");
+    expect(spanDetail({ "error.type": "UpstreamUnavailable" })).toBe("error: UpstreamUnavailable");
+    expect(spanDetail({})).toBe("");
+  });
+});

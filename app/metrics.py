@@ -4,9 +4,11 @@ Definitions (also shown in the dashboard):
 - error rate: requests that ended in HTTP 5xx (including 503 when OpenAI or Qdrant failed) divided by all traced requests.
   Refusals are HTTP 200 and are not errors; 4xx answers and 429 rate limits are counted separately.
 - latency p50 / p95: of the questions that returned HTTP 200, the whole request from start to response.
-- tokens and cost per question: over all /ask requests in the window (a refusal by the pattern filter costs nothing, a
-  refused question may still have cost the screen call). Cost is an ESTIMATE: tokens times the published prices in the
+- tokens and cost per question: everything spent by the /ask requests in the window (including calls of requests that then
+  failed) divided by the questions that returned HTTP 200. Cost is an ESTIMATE: tokens times the published prices in the
   settings; embedding tokens are estimated from text length (the wrapper does not report them).
+- step latency p50 / p95: of the steps that succeeded (failed steps are counted separately: a step that failed after
+  retries would otherwise show the retry waits as its normal latency).
 """
 from __future__ import annotations
 
@@ -72,8 +74,8 @@ def summarize(rows: list[dict], step_rows: list[dict], window: str, now: datetim
                 by_name[s["name"]].append(s)
         out = []
         for name, items in by_name.items():
-            lat = latency_stats([i["duration_ms"] for i in items])
-            out.append({"name": name, "count": lat["count"], "p50": lat["p50"], "p95": lat["p95"], "mean": lat["mean"],
+            lat = latency_stats([i["duration_ms"] for i in items if i["status"] != "error"])
+            out.append({"name": name, "count": len(items), "p50": lat["p50"], "p95": lat["p95"], "mean": lat["mean"],
                         "errors": sum(1 for i in items if i["status"] == "error"),
                         "_order": percentile([i["offset_ms"] for i in items], 50) or 0.0})
         out.sort(key=lambda x: x["_order"])
@@ -110,11 +112,11 @@ def summarize(rows: list[dict], step_rows: list[dict], window: str, now: datetim
         },
         "tokens": {
             "input": tokens_in, "output": tokens_out, "embedding_estimated": embed_est,
-            "per_question": round((tokens_in + tokens_out) / n_asks, 1) if n_asks else None,
+            "per_question": round((tokens_in + tokens_out) / len(ok_asks), 1) if ok_asks else None,
         },
         "cost": {
             "total_usd": round(cost_asks, 6),
-            "per_question_usd": round(cost_asks / n_asks, 6) if n_asks else None,
+            "per_question_usd": round(cost_asks / len(ok_asks), 6) if ok_asks else None,
             "estimate": True,
         },
         "steps": steps,
