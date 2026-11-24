@@ -106,16 +106,29 @@ def _docx(data: bytes) -> Extracted:
 def _pptx(data: bytes) -> Extracted:
     from pptx import Presentation
 
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
     prs = Presentation(io.BytesIO(data))
     sections = []
-    for i, slide in enumerate(prs.slides, start=1):
-        parts: list[str] = []
-        for shape in slide.shapes:
+
+    def walk(shapes, parts: list[str]) -> None:
+        for shape in shapes:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:  # text inside a group of shapes
+                walk(shape.shapes, parts)
+                continue
             if getattr(shape, "has_text_frame", False) and shape.has_text_frame:
                 parts.append(shape.text_frame.text)
             if getattr(shape, "has_table", False) and shape.has_table:
                 for row in shape.table.rows:
                     parts.append(" | ".join(c.text.strip() for c in row.cells))
+
+    for i, slide in enumerate(prs.slides, start=1):  # page = slide number
+        parts: list[str] = []
+        walk(slide.shapes, parts)
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
+            notes = slide.notes_slide.notes_text_frame.text.strip()
+            if notes:  # speaker notes often hold facts that are not on the slide
+                parts.append("Speaker notes: " + notes)
         sections.append(Section(i, "\n".join(p for p in parts if p.strip())))
     return Extracted(sections)
 

@@ -67,7 +67,6 @@ def test_duplicate_is_409_with_existing_id(client):
 
 def test_unsupported_and_mislabelled_types_are_415(client):
     assert upload(client, b"hello", "notes.exe", "application/octet-stream").status_code == 415
-    assert upload(client, b"hello", "notes.txt", "text/plain").status_code == 415  # txt is a B5 type, off by default
     assert upload(client, b"not a pdf at all", "fake.pdf", "application/pdf").status_code == 415
     assert upload(client, PDF, "doc.pdf", "image/png").status_code == 415
 

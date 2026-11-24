@@ -102,3 +102,4 @@ class HealthOut(BaseModel):
     sqlite: bool
     qdrant: bool
     auth_enabled: bool
+    file_types: list[str] = []  # upload types the server accepts, for the upload picker
