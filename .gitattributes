@@ -1,0 +1,5 @@
+# Documents are binary: never convert line endings (it would break PDF byte offsets and zip containers).
+*.pdf binary
+*.docx binary
+*.pptx binary
+*.xlsx binary
