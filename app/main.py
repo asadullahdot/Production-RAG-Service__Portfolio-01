@@ -80,7 +80,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.state.container = container
 
     # ------------------------------------------------------------------ middleware
-    app.add_middleware(UploadSizeLimit, max_bytes=settings.max_upload_bytes, max_mb=settings.max_upload_mb)  # inner: runs after request_context
+    app.add_middleware(UploadSizeLimit, settings=settings)  # inner: runs after request_context
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         supplied = request.headers.get("X-Request-ID", "")
@@ -95,7 +95,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             c: Container = request.app.state.container
             response = None
             if key in RATE_LIMITED_ROUTES:
-                allowed, retry_after = c.limiter.check(rate_key(request, settings))
+                # one bucket per route group, so a burst of uploads does not use up the questions (and vice versa)
+                allowed, retry_after = c.limiter.check(f"{key[1].split('/')[1]}:{rate_key(request, settings)}")
                 if not allowed:
                     response = _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
                                       headers={"Retry-After": str(retry_after)})
@@ -132,7 +133,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     @app.exception_handler(StarletteHTTPException)
     async def http_handler(request: Request, exc: StarletteHTTPException):
         code = {404: "not_found", 405: "invalid_request", 401: "unauthorized", 413: "file_too_large"}.get(exc.status_code, "invalid_request")
-        return _error(request_id_var.get(), exc.status_code, code, str(exc.detail))
+        return _error(request_id_var.get(), exc.status_code, code, str(exc.detail), headers=dict(exc.headers or {}))
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):

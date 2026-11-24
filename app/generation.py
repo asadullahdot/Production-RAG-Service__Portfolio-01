@@ -106,7 +106,9 @@ def parse_citations(answer: str, valid: set[int], max_number: int = 20) -> tuple
         return "".join(f"[{n}]" for n in good)
 
     cleaned = _CITE_RE.sub(repl, answer)
-    return re.sub(r"[ \t]{2,}", " ", cleaned).strip(), cited, stripped
+    if cleaned != answer:  # tidy the gaps left by removed markers only; otherwise keep the model's spacing (tables, code)
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip(), cited, stripped
 
 
 def _norm_refusal(text: str) -> str:

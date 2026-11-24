@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REFUSAL_TEXT = "The provided documents do not contain the answer to this question."
@@ -137,6 +137,14 @@ class Settings(BaseSettings):
     embed_max_concurrency: int = Field(default=4, ge=1)
     judge_max_concurrency: int = Field(default=2, ge=1)
     rate_limit_per_min: int = 20
+
+    @model_validator(mode="after")
+    def _check_consistency(self):
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
+        if self.top_k > self.top_k_max:
+            raise ValueError("TOP_K must not exceed TOP_K_MAX")
+        return self
 
     @property
     def max_upload_bytes(self) -> int:

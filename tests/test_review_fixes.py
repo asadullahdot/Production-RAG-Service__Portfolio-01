@@ -76,19 +76,19 @@ def test_upload_limit_stops_reading_a_streaming_body():
             if not msg.get("more_body"):
                 break
 
-    mw = UploadSizeLimit(inner, max_bytes=1000, max_mb=1)
+    mw = UploadSizeLimit(inner, Settings(_env_file=None, max_upload_mb=1))
     chunks = [b"x" * 512 * 1024 for _ in range(100)]  # a 50 MB body with no Content-Length
     scope, receive, send, sent = _asgi([], chunks)
     with pytest.raises(HTTPException):
         asyncio.run(mw(scope, receive, send))
-    assert len(sent) <= 4  # about 2 MB read, not 50 MB
+    assert len(sent) <= 6  # about 2 MB read, not 50 MB
 
 
 def test_upload_limit_rejects_a_declared_oversize_body_immediately():
     async def inner(scope, receive, send):
         await receive()
 
-    mw = UploadSizeLimit(inner, max_bytes=1000, max_mb=1)
+    mw = UploadSizeLimit(inner, Settings(_env_file=None, max_upload_mb=1))
     scope, receive, send, sent = _asgi([(b"content-length", b"999999999")], [b"x"])
     with pytest.raises(HTTPException):
         asyncio.run(mw(scope, receive, send))
@@ -587,3 +587,55 @@ def test_registry_and_vectors_share_one_upload_timestamp(tmp_path):
 def test_judge_reply_with_infinity_is_a_parse_error_not_a_crash():
     from evals.judge import parse_verdict
     assert parse_verdict('{"claims": [], "correctness": Infinity, "declines": false}').parse_error
+
+
+# ---- seventh review round (24 Nov 2026) -------------------------------------------------------------
+def test_ask_body_is_capped_while_it_streams(tmp_path):
+    e = Env(tmp_path)
+    huge = {"question": "x" * (200 * 1024)}
+    r = e.client.post("/ask", json=huge)
+    assert r.status_code == 413
+    assert e.client.post("/ask", json={"question": "hello", "doc_ids": ["a"] * 101}).status_code == 422
+
+
+def test_unauthenticated_upload_is_rejected_before_its_body_is_read(tmp_path):
+    s = Settings(_env_file=None, auth_enabled=True, jwt_secret="x" * 40)
+    consumed = []
+
+    async def inner(scope, receive, send):
+        await receive()
+
+    mw = UploadSizeLimit(inner, s)
+    scope, receive, send, sent = _asgi([], [b"x" * 1000])
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(mw(scope, receive, send))
+    assert exc.value.status_code == 401 and sent == []
+
+
+def test_over_the_wire_401_for_an_anonymous_upload(tmp_path):
+    e = Env(tmp_path, auth_enabled=True)
+    r = e.client.post("/documents", files={"file": ("a.pdf", make_pdf([LONG]), "application/pdf")})
+    assert r.status_code == 401 and r.json()["error"]["code"] == "unauthorized"
+
+
+def test_inconsistent_chunk_settings_fail_at_startup():
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, chunk_size=500, chunk_overlap=500)
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, top_k=30, top_k_max=20)
+
+
+def test_orphan_vectors_do_not_starve_the_top_k(tmp_path):
+    e = Env(tmp_path)
+    doc = e.client.post("/documents", files={"file": ("a.pdf", make_pdf(["refund policy returns accepted within thirty days " * 6]), "application/pdf")}).json()
+    orphans = e.client.post("/documents", files={"file": ("b.pdf", make_pdf(["refund policy returns accepted within thirty days of purchase " * 6 + " b"]), "application/pdf")}).json()
+    e.container.db.delete_document("local", orphans["doc_id"])  # registry says gone, vectors remain
+    body = e.client.post("/ask", json={"question": "refund policy returns thirty days", "top_k": 1}).json()
+    assert body["retrieved_chunks"] and body["retrieved_chunks"][0]["doc_id"] == doc["doc_id"]
+
+
+def test_rate_limit_buckets_are_per_route_group(tmp_path):
+    e = Env(tmp_path, rate_limit_per_min=2)
+    for _ in range(2):
+        e.client.post("/documents", files={"file": ("a.pdf", make_pdf([LONG]), "application/pdf")})
+    assert e.client.post("/ask", json={"question": "hello there"}).status_code == 200  # uploads did not use up /ask

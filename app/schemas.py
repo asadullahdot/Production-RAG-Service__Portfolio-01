@@ -46,9 +46,9 @@ class DocumentList(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1, examples=["What is the refund policy?"])
-    top_k: int | None = Field(default=None, ge=1)
-    doc_ids: list[str] | None = None
+    question: str = Field(min_length=1, max_length=10_000, examples=["What is the refund policy?"])  # exact cap: MAX_QUESTION_CHARS
+    top_k: int | None = Field(default=None, ge=1, le=100)  # clamped to TOP_K_MAX in retrieval
+    doc_ids: list[str] | None = Field(default=None, max_length=100)
 
 
 class RetrievedChunk(BaseModel):

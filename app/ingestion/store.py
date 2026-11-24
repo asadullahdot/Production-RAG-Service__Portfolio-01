@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import time
 import uuid
@@ -94,7 +95,7 @@ class QdrantStore:
                 if not self.s.qdrant_url:
                     raise UpstreamUnavailable("Qdrant is not configured (missing QDRANT_URL).")
                 self._client = AsyncQdrantClient(url=self.s.qdrant_url, api_key=self.s.qdrant_api_key or None,
-                                                 timeout=int(self.s.qdrant_timeout_s), prefer_grpc=False)
+                                                 timeout=max(1, math.ceil(self.s.qdrant_timeout_s)), prefer_grpc=False)
         return self._client
 
     @staticmethod
