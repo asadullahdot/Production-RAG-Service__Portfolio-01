@@ -14,10 +14,12 @@ class RateLimiter:
         self.window = window_s
         self._clock = clock
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._next_sweep = clock() + window_s
 
     def check(self, key: str) -> tuple[bool, int]:
         """Record a hit. Returns (allowed, retry_after_seconds)."""
         now = self._clock()
+        self._sweep(now)
         q = self._hits[key]
         while q and now - q[0] >= self.window:
             q.popleft()
@@ -25,6 +27,14 @@ class RateLimiter:
             return False, max(1, int(self.window - (now - q[0])) + 1)
         q.append(now)
         return True, 0
+
+    def _sweep(self, now: float) -> None:
+        """Once per window, drop keys whose hits have all expired, so spoofed or one-off keys cannot pile up."""
+        if now < self._next_sweep:
+            return
+        self._next_sweep = now + self.window
+        for key in [k for k, q in self._hits.items() if not q or now - q[-1] >= self.window]:
+            del self._hits[key]
 
     def reset(self) -> None:
         self._hits.clear()

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from qdrant_client import AsyncQdrantClient, models
-from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from app.config import Settings
 from app.errors import UpstreamUnavailable
@@ -93,8 +93,16 @@ class QdrantStore:
                                                  timeout=int(self.s.qdrant_timeout_s), prefer_grpc=False)
         return self._client
 
-    async def _call(self, make_call):
+    @staticmethod
+    def _retryable(exc: Exception) -> bool:
+        """Only network trouble, timeouts and 5xx are worth retrying; bad requests and code errors are not."""
+        if isinstance(exc, UnexpectedResponse):
+            return exc.status_code >= 500
+        return isinstance(exc, (asyncio.TimeoutError, ConnectionError, OSError, ResponseHandlingException))
+
+    async def _call(self, make_call, retries: int | None = None):
         """Run one Qdrant call with a timeout and bounded jittered retries; any failure becomes a 503."""
+        max_retries = self.s.max_retries if retries is None else retries
         if self.s.demo_fault == "vector_db_down":
             raise UpstreamUnavailable()
         attempt = 0
@@ -104,9 +112,8 @@ class QdrantStore:
             except UpstreamUnavailable:
                 raise
             except Exception as exc:  # network, auth, timeout, server error
-                retryable = not (isinstance(exc, UnexpectedResponse) and exc.status_code < 500)
                 attempt += 1
-                if not retryable or attempt > self.s.max_retries:
+                if not self._retryable(exc) or attempt > max_retries:
                     log_event(logger, "Qdrant call failed", logging.ERROR, error=type(exc).__name__, attempts=attempt)
                     raise UpstreamUnavailable() from exc
                 wait = min(self.s.retry_backoff_max_s, self.s.retry_backoff_s * (2 ** (attempt - 1))) * random.uniform(0.5, 1.0)
@@ -118,12 +125,19 @@ class QdrantStore:
         """Idempotent: create the collection and payload indexes if missing; refuse a size mismatch."""
         name, dim = self.collection, self.s.embedding_dim
         if not await self._call(lambda: self.client.collection_exists(name)):
-            await self._call(lambda: self.client.create_collection(
-                name, vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE)))
+            try:
+                await self._call(lambda: self.client.create_collection(
+                    name, vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE)))
+            except UpstreamUnavailable:
+                # Another request may have created it a moment ago (409 / "already exists"): that is success.
+                if not await self._call(lambda: self.client.collection_exists(name)):
+                    raise
         info = await self._call(lambda: self.client.get_collection(name))
-        size = info.config.params.vectors.size
-        if size != dim:
-            raise RuntimeError(f"Qdrant collection '{name}' has vector size {size}, expected {dim}")
+        vectors = info.config.params.vectors
+        if not isinstance(vectors, models.VectorParams):
+            raise RuntimeError(f"Qdrant collection '{name}' uses named or multiple vectors; this service needs one unnamed vector")
+        if vectors.size != dim:
+            raise RuntimeError(f"Qdrant collection '{name}' has vector size {vectors.size}, expected {dim}")
         have = set((info.payload_schema or {}).keys())
         for key in (OWNER_KEY, DOC_KEY):  # also repairs a collection whose index creation was interrupted
             if key not in have:  # no effect in embedded mode, needed for speed on a server
@@ -134,7 +148,11 @@ class QdrantStore:
     async def _ensure_ready(self) -> None:
         """A Qdrant outage at startup must not leave the service broken: retry the setup on first use."""
         if not self._ready:
-            await self.ensure_collection()
+            try:
+                await self.ensure_collection()
+            except RuntimeError as exc:  # wrong collection layout/size: a configuration error, say so in the log
+                log_event(logger, "Qdrant collection is not usable", logging.ERROR, error=str(exc)[:200])
+                raise UpstreamUnavailable() from exc
 
     async def upsert(self, owner: str, items: list[VectorItem]) -> None:
         await self._ensure_ready()
@@ -184,7 +202,7 @@ class QdrantStore:
     async def ping(self) -> bool:
         try:
             await self._ensure_ready()
-            await self._call(lambda: self.client.get_collections())
+            await self._call(lambda: self.client.get_collections(), retries=0)  # a probe: one attempt
             return True
         except UpstreamUnavailable:
             return False

@@ -157,7 +157,7 @@ def test_request_deadline_stops_retrying():
 
 
 def test_embeddings_and_demo_fault():
-    client, _, _ = make([[[0.1, 0.2]]])
+    client, _, _ = make([[[0.1, 0.2]]], embedding_dim=2)
     assert run(client.embed(["a"])) == [[0.1, 0.2]]
     client, sdk, sleeps = make([ok_response()], demo_fault="llm_429", max_retries=2)
     with pytest.raises(UpstreamUnavailable):

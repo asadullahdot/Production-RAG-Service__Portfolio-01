@@ -1,6 +1,7 @@
 """FastAPI app: routes, middleware and exception handlers ONLY — no business logic (PLAN.md §4, §7)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -50,7 +51,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         app.state.container = container or build_container(settings)
         app.state.vector_db_checked = (0.0, False)
         try:
-            await app.state.container.store.ensure_collection()
+            await asyncio.wait_for(app.state.container.store.ensure_collection(),
+                                   timeout=settings.qdrant_timeout_s)  # never hold startup longer than one timeout
         except Exception as exc:  # the UI/docs should still start; requests will return 503
             log_event(logger, "vector collection not ready at startup", logging.WARNING, error=str(exc)[:200])
         yield
@@ -76,22 +78,26 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         key = (request.method, request.url.path)
         factor = 3 if key == ("POST", "/documents") else 1
         dl_ctx = deadline_var.set(started + settings.request_deadline_s * factor)
+        status = 500  # what is logged if an exception escapes
         try:
             c: Container = request.app.state.container
+            response = None
             if key in RATE_LIMITED_ROUTES:
                 allowed, retry_after = c.limiter.check(_rate_key(request, settings))
                 if not allowed:
-                    return _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
-                                  headers={"Retry-After": str(retry_after)})
-            response = await call_next(request)
-        finally:
+                    response = _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
+                                      headers={"Retry-After": str(retry_after)})
+            if response is None:
+                response = await call_next(request)
+            status = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:  # every request is logged, including 429s and crashes
+            log_event(logger, "request", method=request.method, path=request.url.path, status=status,
+                      latency_ms=int((time.monotonic() - started) * 1000),
+                      user_id=getattr(request.state, "owner_id", None))
             deadline_var.reset(dl_ctx)
-        response.headers["X-Request-ID"] = request_id
-        log_event(logger, "request", method=request.method, path=request.url.path, status=response.status_code,
-                  latency_ms=int((time.monotonic() - started) * 1000),
-                  user_id=getattr(request.state, "owner_id", None))
-        request_id_var.reset(token_ctx)
-        return response
+            request_id_var.reset(token_ctx)
 
     # ------------------------------------------------------------------ error handlers
     @app.exception_handler(AppError)

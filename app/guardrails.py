@@ -11,7 +11,7 @@ import zipfile
 from dataclasses import dataclass
 
 from app.config import (API_KEY_REGEXES, DOCUMENT_INSTRUCTION_PATTERNS, INJECTION_PATTERNS,
-                        JAILBREAK_PATTERNS, PROMPT_CANARY, Settings)
+                        JAILBREAK_PATTERNS, PROMPT_CANARY, SOFT_PATTERNS, Settings)
 from app.errors import CorruptFile, EmptyFile, FileTooLarge, InvalidRequest, MaliciousFile, UnsupportedType
 
 # ----------------------------------------------------------------------------- upload
@@ -88,6 +88,7 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
 class InputVerdict:
     allowed: bool
     reason: str | None = None  # "prompt_injection" | "jailbreak"
+    soft: bool = False  # only soft (ambiguous) matches may be released by the model recheck
 
 
 def _normalise(text: str) -> str:
@@ -113,11 +114,13 @@ def check_question(question: str | None, settings: Settings) -> str:
 
 def check_input(question: str) -> InputVerdict:
     text = _normalise(question)
-    if any(p.search(text) for p in _JB):
-        return InputVerdict(False, "jailbreak")
-    if any(p.search(text) for p in _INJ):
-        return InputVerdict(False, "prompt_injection")
-    return InputVerdict(True)
+    jb = [p for p in _JB if p.search(text)]
+    inj = [p for p in _INJ if p.search(text)]
+    hits = jb + inj
+    if not hits:
+        return InputVerdict(True)
+    soft = all(p.pattern in SOFT_PATTERNS for p in hits)  # one hard match makes the whole refusal hard
+    return InputVerdict(False, "jailbreak" if jb else "prompt_injection", soft)
 
 
 # ----------------------------------------------------------------------------- output

@@ -11,7 +11,7 @@ import uuid
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 _SECRET_RE = re.compile(
-    r"(sk-[A-Za-z0-9_\-]{8,}|pcsk_[A-Za-z0-9_\-]{8,}|eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"
+    r"((?<![A-Za-z0-9])sk-[A-Za-z0-9_\-]{8,}|(?<![A-Za-z0-9])pcsk_[A-Za-z0-9_\-]{8,}|eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"
     r"|(?i:bearer)\s+[A-Za-z0-9._\-]+|(?i:authorization)['\"]?\s*[:=]\s*['\"]?[^\s,'\"]+)"
 )
 

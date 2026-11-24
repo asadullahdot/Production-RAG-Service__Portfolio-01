@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 
@@ -32,13 +33,21 @@ class DiskCache:
     def get(self, key: str):
         path = self.dir / f"{key}.json"
         if path.exists():
-            self.hits += 1
-            return json.loads(path.read_text(encoding="utf-8"))
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):  # a run was killed while writing: treat it as a miss
+                path.unlink(missing_ok=True)
+            else:
+                self.hits += 1
+                return value
         self.misses += 1
         return None
 
     def put(self, key: str, value) -> None:
-        (self.dir / f"{key}.json").write_text(json.dumps(value), encoding="utf-8")
+        path = self.dir / f"{key}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(value), encoding="utf-8")
+        os.replace(tmp, path)  # atomic: a reader never sees half a file
 
 
 class CachedOpenAI:

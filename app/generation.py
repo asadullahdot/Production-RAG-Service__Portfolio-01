@@ -136,7 +136,7 @@ class AskService:
         usage = Usage()
 
         verdict = guardrails.check_input(question)
-        if not verdict.allowed and self.s.input_recheck and await self._recheck_allows(question, usage):
+        if not verdict.allowed and verdict.soft and self.s.input_recheck and await self._recheck_allows(question, usage):
             log_event(logger, "regex guardrail overruled by the model recheck (false positive)", logging.INFO,
                       reason=verdict.reason)
             verdict = guardrails.InputVerdict(True)

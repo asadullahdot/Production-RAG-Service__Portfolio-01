@@ -17,33 +17,42 @@ BLOCKED_TEXT = "I can't share that."
 INJECTION_REFUSAL_TEXT = "I can't follow instructions that try to change my rules or reveal my configuration."
 
 # English-only, pattern based (PLAN.md §10). Case-insensitive regexes.
-INJECTION_PATTERNS = [
+# HARD patterns are always refused. SOFT patterns also match ordinary document questions ("show your rules for
+# refunds", "how do I jailbreak ...", "developer mode"), so only those may be released by the model recheck.
+HARD_INJECTION_PATTERNS = [
     r"ignore\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"disregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
     r"forget\s+(all\s+|everything\s+|your\s+)?(previous|prior|above|earlier)?\s*(instructions?|rules?)",
-    r"(reveal|show|print|repeat|display|output)\s+(me\s+)?(your\s+(system\s+)?|the\s+system\s+)(prompt|instructions|rules|configuration)",
-    r"what\s+(is|are)\s+your\s+(system\s+)?(prompt|instructions)",
     r"override\s+(your|the)\s+(instructions|rules|guidelines|safety)",
     r"new\s+instructions?\s*:",
     r"(give|tell|show|reveal|share|print|send)\s+(me\s+)?(your|the\s+system'?s?|the\s+server'?s?)\s+(api[\s_-]?key|secret[\s_-]?key|access\s+token|password|credentials)",
     r"what\s+(is|are)\s+your\s+(api[\s_-]?key|secret|password|credentials)",
 ]
-JAILBREAK_PATTERNS = [
-    r"\bDAN\b",
+SOFT_INJECTION_PATTERNS = [
+    r"(reveal|show|print|repeat|display|output)\s+(me\s+)?(your\s+(system\s+)?|the\s+system\s+)(prompt|instructions|rules|configuration)",
+    r"what\s+(is|are)\s+your\s+(system\s+)?(prompt|instructions)",
+]
+HARD_JAILBREAK_PATTERNS = [
     r"do\s+anything\s+now",
+    r"pretend\s+(that\s+)?you\s+(are|have)\s+no\s+(rules|restrictions|limits|guidelines)",
+    r"(act|behave|respond)\s+as\s+(if\s+)?(you\s+(are|were)\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered)",
+    r"you\s+are\s+no\s+longer\s+bound",
+    r"roleplay\s+as\s+.*(no\s+rules|evil|unrestricted)",
+]
+SOFT_JAILBREAK_PATTERNS = [
+    r"\bDAN\b",
     r"(^|[.!?]\s+)(please\s+)?(enable|enter|activate|switch\s+to|turn\s+on)\s+developer\s+mode",  # an order, not "how do I enable ..."
     r"you\s+are\s+(now\s+)?in\s+developer\s+mode",
     r"developer\s+mode\s+(enabled|activated)",
     r"jailbreak",
-    r"pretend\s+(that\s+)?you\s+(are|have)\s+no\s+(rules|restrictions|limits|guidelines)",
-    r"(act|behave|respond)\s+as\s+(if\s+)?(you\s+(are|were)\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered)",
     r"(answer|respond|reply|act|behave|operate|speak|talk)\w*\s+(\w+\s+){0,3}?without\s+(any\s+)?(restrictions|filters|limitations|guardrails)",
-    r"you\s+are\s+no\s+longer\s+bound",
-    r"roleplay\s+as\s+.*(no\s+rules|evil|unrestricted)",
 ]
+INJECTION_PATTERNS = HARD_INJECTION_PATTERNS + SOFT_INJECTION_PATTERNS
+JAILBREAK_PATTERNS = HARD_JAILBREAK_PATTERNS + SOFT_JAILBREAK_PATTERNS
+SOFT_PATTERNS = frozenset(SOFT_INJECTION_PATTERNS + SOFT_JAILBREAK_PATTERNS)
 API_KEY_REGEXES = [
-    r"sk-[A-Za-z0-9_\-]{16,}",
-    r"pcsk_[A-Za-z0-9_\-]{16,}",
+    r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_\-]{16,}",  # the lookbehind keeps words like "risk-management-framework" out
+    r"(?<![A-Za-z0-9])pcsk_[A-Za-z0-9_\-]{16,}",
     r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}",
 ]
 # B6: instruction-like text hidden inside documents (flagged, still treated as data).

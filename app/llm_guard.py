@@ -88,7 +88,7 @@ class LLMGuard:
             from langchain_openai import OpenAIEmbeddings
             self._require_key()
             self._embeddings = OpenAIEmbeddings(
-                model=self.s.embedding_model, api_key=self.s.openai_api_key, max_retries=0,
+                model=self.s.embedding_model, api_key=self.s.openai_api_key, dimensions=self.s.embedding_dim, max_retries=0,
                 timeout=self.s.embed_timeout_s, check_embedding_ctx_length=False)
         return self._embeddings
 
@@ -96,7 +96,12 @@ class LLMGuard:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         async def call():
             return await self.embeddings.aembed_documents(texts)
-        return await self._with_policy("embed", call)
+        vectors = await self._with_policy("embed", call)
+        if vectors and len(vectors[0]) != self.s.embedding_dim:  # Qdrant would reject these later with no clear cause
+            log_event(logger, "embedding length differs from EMBEDDING_DIM", logging.ERROR,
+                      got=len(vectors[0]), expected=self.s.embedding_dim)
+            raise UpstreamUnavailable()
+        return vectors
 
     async def generate(self, system: str, user: str) -> LLMResult:
         return await self._respond("llm", self.s.llm_model, self.s.llm_reasoning_effort, system, user,
@@ -166,7 +171,7 @@ class LLMGuard:
                     raise UpstreamUnavailable() from exc
                 reason, retry_after = "rate limited (429)", _retry_after(exc)
             except openai.APIStatusError as exc:
-                if exc.status_code >= 500:
+                if exc.status_code >= 500 or exc.status_code in (408, 409):  # transient: worth a retry
                     reason, retry_after = f"server error {exc.status_code}", _retry_after(exc)
                 else:
                     log_event(logger, "OpenAI rejected the request", logging.ERROR,
