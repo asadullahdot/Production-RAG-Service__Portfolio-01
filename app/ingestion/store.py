@@ -1,205 +1,234 @@
-"""Vector store interface with Pinecone and in-memory implementations (PLAN.md §3, §4.1).
+"""Vector store: Qdrant (PLAN.md §3.1, §4.1).
 
-Every method takes an ``owner`` that maps to one Pinecone namespace (``<prefix>_<owner>``).
-Pinecone serverless is eventually consistent and cannot delete by metadata filter, so callers
-poll :meth:`exists` after upserting and delete by computed ids.
+One collection holds every owner's chunks; isolation is a payload filter on ``metadata.owner_id`` (every
+search and delete includes it). The payload layout (``page_content`` + ``metadata{...}``) is the one
+``langchain-qdrant`` uses, so the collection can also be read with ``QdrantVectorStore``. We write and
+search with ``AsyncQdrantClient`` directly because we embed ourselves through ``llm_guard`` (retries,
+semaphores, deadline) and the LangChain store would embed a second time on its own.
+
+Qdrant point ids must be UUIDs or integers, so a chunk's readable id ``{doc_id}:{chunk_idx}`` is stored as
+``metadata.chunk_id`` and the point id is ``uuid5(NAMESPACE, chunk_id)``.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import math
+import random
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+
 from app.config import Settings
 from app.errors import UpstreamUnavailable
+from app.llm_guard import deadline_var
 from app.logging_setup import log_event
 
 logger = logging.getLogger("rag.store")
 
+POINT_NAMESPACE = uuid.UUID("6f1c2a9e-5b0d-4c7e-9a31-2d8f4e6b7c10")  # fixed: ids must be stable across runs
+OWNER_KEY = "metadata.owner_id"
+DOC_KEY = "metadata.doc_id"
+
+
+def point_id(chunk_id: str) -> str:
+    return str(uuid.uuid5(POINT_NAMESPACE, chunk_id))
+
 
 @dataclass
 class VectorItem:
-    id: str
+    id: str                    # readable chunk id: "{doc_id}:{chunk_idx}"
     values: list[float]
-    metadata: dict[str, Any]
+    metadata: dict[str, Any]   # includes "text" (the chunk text)
 
 
 @dataclass
 class Hit:
-    id: str
-    score: float  # cosine similarity
-    metadata: dict[str, Any] = field(default_factory=dict)
+    id: str                    # readable chunk id
+    score: float               # cosine similarity
+    metadata: dict[str, Any] = field(default_factory=dict)  # includes "text"
 
 
 class VectorStore(Protocol):
-    async def ensure_index(self) -> None: ...
+    async def ensure_collection(self) -> None: ...
     async def upsert(self, owner: str, items: list[VectorItem]) -> None: ...
     async def query(self, owner: str, vector: list[float], top_k: int, doc_ids: list[str] | None = None) -> list[Hit]: ...
-    async def exists(self, owner: str, vector_id: str) -> bool: ...
-    async def delete_ids(self, owner: str, ids: list[str]) -> None: ...
-    async def delete_namespace(self, owner: str) -> None: ...
+    async def delete_document(self, owner: str, doc_id: str) -> None: ...
+    async def delete_owner(self, owner: str) -> None: ...
+    async def count(self, owner: str) -> int: ...
     async def ping(self) -> bool: ...
+    async def healthy(self) -> bool: ...
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    return dot / (na * nb) if na and nb else 0.0
+def _owner_filter(owner: str, doc_ids: list[str] | None = None, doc_id: str | None = None) -> models.Filter:
+    must: list[models.Condition] = [models.FieldCondition(key=OWNER_KEY, match=models.MatchValue(value=owner))]
+    if doc_id:
+        must.append(models.FieldCondition(key=DOC_KEY, match=models.MatchValue(value=doc_id)))
+    if doc_ids:
+        must.append(models.FieldCondition(key=DOC_KEY, match=models.MatchAny(any=list(doc_ids))))
+    return models.Filter(must=must)
 
 
-class InMemoryStore:
-    """Exact cosine search in a dict; used by tests and for offline development."""
+class QdrantStore:
+    """Qdrant over REST (Cloud/server) or embedded (``QDRANT_PATH``: a folder or ``:memory:``)."""
 
-    def __init__(self) -> None:
-        self.ns: dict[str, dict[str, VectorItem]] = {}
-        self.fail = False  # tests flip this to simulate "Pinecone down"
-
-    def _check(self) -> None:
-        if self.fail:
-            raise UpstreamUnavailable()
-
-    async def ensure_index(self) -> None:
-        return None
-
-    async def upsert(self, owner: str, items: list[VectorItem]) -> None:
-        self._check()
-        bucket = self.ns.setdefault(owner, {})
-        for it in items:
-            bucket[it.id] = it
-
-    async def query(self, owner, vector, top_k, doc_ids=None) -> list[Hit]:
-        self._check()
-        hits = []
-        for it in self.ns.get(owner, {}).values():
-            if doc_ids and it.metadata.get("doc_id") not in doc_ids:
-                continue
-            hits.append(Hit(it.id, _cosine(vector, it.values), dict(it.metadata)))
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:top_k]
-
-    async def exists(self, owner: str, vector_id: str) -> bool:
-        self._check()
-        return vector_id in self.ns.get(owner, {})
-
-    async def delete_ids(self, owner: str, ids: list[str]) -> None:
-        self._check()
-        bucket = self.ns.get(owner, {})
-        for i in ids:
-            bucket.pop(i, None)
-
-    async def delete_namespace(self, owner: str) -> None:
-        self._check()
-        self.ns.pop(owner, None)
-
-    async def ping(self) -> bool:
-        return not self.fail
-
-    def count(self, owner: str) -> int:
-        return len(self.ns.get(owner, {}))
-
-
-class PineconeStore:
-    """Pinecone serverless. The sync SDK runs in worker threads with a per-call timeout."""
-
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, client: AsyncQdrantClient | None = None, collection: str | None = None,
+                 sleep=asyncio.sleep):
         self.s = settings
-        self._pc = None
-        self._index = None
+        self._client = client
+        self._sleep = sleep
+        self.collection = collection or settings.qdrant_collection
+        self._health = (0.0, False)  # (checked at, result) for healthy()
+        self._ready = False  # set once ensure_collection() has succeeded; every operation retries it until then
 
-    def _namespace(self, owner: str) -> str:
-        return f"{self.s.pinecone_namespace_prefix}_{owner}" if not owner.startswith("eval_") else owner
+    @property
+    def client(self) -> AsyncQdrantClient:
+        if self._client is None:
+            if self.s.qdrant_path:
+                self._client = AsyncQdrantClient(path=None if self.s.qdrant_path == ":memory:" else self.s.qdrant_path,
+                                                 location=":memory:" if self.s.qdrant_path == ":memory:" else None)
+            else:
+                if not self.s.qdrant_url:
+                    raise UpstreamUnavailable("Qdrant is not configured (missing QDRANT_URL).")
+                self._client = AsyncQdrantClient(url=self.s.qdrant_url, api_key=self.s.qdrant_api_key or None,
+                                                 timeout=max(1, math.ceil(self.s.qdrant_timeout_s)), prefer_grpc=False)
+        return self._client
 
-    def _client(self):
-        if self._pc is None:
-            if not self.s.pinecone_api_key:
-                raise UpstreamUnavailable("Pinecone is not configured (missing PINECONE_API_KEY).")
-            from pinecone import Pinecone
-            self._pc = Pinecone(api_key=self.s.pinecone_api_key)
-        return self._pc
+    @staticmethod
+    def _retryable(exc: Exception) -> bool:
+        """Only network trouble, timeouts and 5xx are worth retrying; bad requests and code errors are not."""
+        if isinstance(exc, UnexpectedResponse):
+            return exc.status_code >= 500 or exc.status_code == 429
+        return isinstance(exc, (asyncio.TimeoutError, ConnectionError, OSError, ResponseHandlingException))
 
-    def _idx(self):
-        if self._index is None:
-            self._index = self._client().Index(self.s.pinecone_index)
-        return self._index
-
-    async def _call(self, fn, *args, **kwargs):
-        if self.s.demo_fault == "pinecone_down":
+    async def _call(self, make_call, retries: int | None = None, timeout: float | None = None):
+        """Run one Qdrant call with a timeout and bounded jittered retries; any failure becomes a 503."""
+        max_retries = self.s.max_retries if retries is None else retries
+        timeout_cap = timeout
+        if self.s.demo_fault == "vector_db_down":
             raise UpstreamUnavailable()
-        try:
-            return await asyncio.wait_for(asyncio.to_thread(fn, *args, **kwargs), timeout=self.s.pinecone_timeout_s)
-        except UpstreamUnavailable:
-            raise
-        except Exception as exc:  # network, auth, timeouts, SDK errors
-            log_event(logger, "Pinecone call failed", logging.ERROR, error=type(exc).__name__)
-            raise UpstreamUnavailable() from exc
+        attempt = 0
+        while True:
+            deadline = deadline_var.get()  # the one request deadline also covers Qdrant
+            timeout = self.s.qdrant_timeout_s if timeout_cap is None else min(self.s.qdrant_timeout_s, timeout_cap)
+            if deadline is not None:
+                if time.monotonic() >= deadline:
+                    raise UpstreamUnavailable()
+                timeout = max(0.1, min(timeout, deadline - time.monotonic()))
+            try:
+                return await asyncio.wait_for(make_call(), timeout=timeout)
+            except UpstreamUnavailable:
+                raise
+            except Exception as exc:  # network, auth, timeout, server error
+                attempt += 1
+                if not self._retryable(exc) or attempt > max_retries:
+                    log_event(logger, "Qdrant call failed", logging.ERROR, error=type(exc).__name__, attempts=attempt)
+                    raise UpstreamUnavailable() from exc
+                wait = min(self.s.retry_backoff_max_s, self.s.retry_backoff_s * (2 ** (attempt - 1))) * random.uniform(0.5, 1.0)
+                log_event(logger, "Qdrant call failed; retrying", logging.WARNING,
+                          error=type(exc).__name__, attempt=attempt, wait_s=round(wait, 2))
+                if deadline is not None and time.monotonic() + wait >= deadline:
+                    raise UpstreamUnavailable() from exc
+                await self._sleep(wait)
 
-    async def ensure_index(self) -> None:
-        """Idempotent: create the serverless index if missing; refuse a dimension mismatch."""
-        from pinecone import ServerlessSpec
+    async def ensure_collection(self) -> None:
+        """Idempotent: create the collection and payload indexes if missing; refuse a size mismatch."""
+        name, dim = self.collection, self.s.embedding_dim
+        if not await self._call(lambda: self.client.collection_exists(name)):
+            try:
+                await self._call(lambda: self.client.create_collection(
+                    name, vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE)))
+            except UpstreamUnavailable:
+                # Another request may have created it a moment ago (409 / "already exists"): that is success.
+                if not await self._call(lambda: self.client.collection_exists(name)):
+                    raise
+        info = await self._call(lambda: self.client.get_collection(name))
+        vectors = info.config.params.vectors
+        if not isinstance(vectors, models.VectorParams):
+            raise RuntimeError(f"Qdrant collection '{name}' uses named or multiple vectors; this service needs one unnamed vector")
+        if vectors.size != dim:
+            raise RuntimeError(f"Qdrant collection '{name}' has vector size {vectors.size}, expected {dim}")
+        have = set((info.payload_schema or {}).keys())
+        for key in (OWNER_KEY, DOC_KEY):  # also repairs a collection whose index creation was interrupted
+            if key not in have:  # no effect in embedded mode, needed for speed on a server
+                await self._call(lambda key=key: self.client.create_payload_index(
+                    name, field_name=key, field_schema=models.PayloadSchemaType.KEYWORD))
+        self._ready = True
 
-        pc = self._client()
-        name = self.s.pinecone_index
-
-        def _ensure():
-            if not pc.has_index(name):
-                pc.create_index(name=name, dimension=self.s.embedding_dim, metric="cosine",
-                                spec=ServerlessSpec(cloud=self.s.pinecone_cloud, region=self.s.pinecone_region))
-            desc = pc.describe_index(name)
-            if int(desc.dimension) != self.s.embedding_dim:
-                raise RuntimeError(
-                    f"Pinecone index '{name}' has dimension {desc.dimension}, expected {self.s.embedding_dim}")
-            return desc
-
-        await asyncio.wait_for(asyncio.to_thread(_ensure), timeout=max(self.s.pinecone_timeout_s, 120))
+    async def _ensure_ready(self) -> None:
+        """A Qdrant outage at startup must not leave the service broken: retry the setup on first use."""
+        if not self._ready:
+            try:
+                await self.ensure_collection()
+            except RuntimeError as exc:  # wrong collection layout/size: a configuration error, say so in the log
+                log_event(logger, "Qdrant collection is not usable", logging.ERROR, error=str(exc)[:200])
+                raise UpstreamUnavailable() from exc
 
     async def upsert(self, owner: str, items: list[VectorItem]) -> None:
-        ns = self._namespace(owner)
-        batch = self.s.pinecone_upsert_batch
+        await self._ensure_ready()
+        batch = self.s.qdrant_upsert_batch
         for i in range(0, len(items), batch):
-            chunk = [{"id": it.id, "values": it.values, "metadata": it.metadata} for it in items[i:i + batch]]
-            await self._call(self._idx().upsert, vectors=chunk, namespace=ns)
+            points = []
+            for it in items[i:i + batch]:
+                meta = {k: v for k, v in it.metadata.items() if k != "text"}
+                meta["owner_id"] = owner
+                meta["chunk_id"] = it.id
+                points.append(models.PointStruct(id=point_id(it.id), vector=it.values,
+                                                 payload={"page_content": it.metadata.get("text", ""), "metadata": meta}))
+            await self._call(lambda points=points: self.client.upsert(self.collection, points=points, wait=True))
 
     async def query(self, owner, vector, top_k, doc_ids=None) -> list[Hit]:
-        kwargs: dict[str, Any] = dict(vector=vector, top_k=top_k, namespace=self._namespace(owner), include_metadata=True)
-        if doc_ids:
-            kwargs["filter"] = {"doc_id": {"$in": list(doc_ids)}}
-        res = await self._call(self._idx().query, **kwargs)
-        return [Hit(m["id"], float(m["score"]), dict(m.get("metadata") or {})) for m in _matches(res)]
+        await self._ensure_ready()
+        res = await self._call(lambda: self.client.query_points(
+            self.collection, query=vector, limit=top_k, query_filter=_owner_filter(owner, doc_ids=doc_ids),
+            with_payload=True))
+        hits = []
+        for p in res.points:
+            payload = p.payload or {}
+            meta = dict(payload.get("metadata") or {})
+            meta["text"] = payload.get("page_content", "")
+            hits.append(Hit(id=str(meta.get("chunk_id", p.id)), score=float(p.score), metadata=meta))
+        return hits
 
-    async def exists(self, owner: str, vector_id: str) -> bool:
-        res = await self._call(self._idx().fetch, ids=[vector_id], namespace=self._namespace(owner))
-        vectors = res["vectors"] if isinstance(res, dict) else getattr(res, "vectors", {})
-        return vector_id in (vectors or {})
+    async def delete_document(self, owner: str, doc_id: str) -> None:
+        """One filtered delete (owner AND doc); also removes the points of a half-written upload."""
+        await self._ensure_ready()
+        flt = _owner_filter(owner, doc_id=doc_id)
+        await self._call(lambda: self.client.delete(
+            self.collection, points_selector=models.FilterSelector(filter=flt), wait=True))
 
-    async def delete_ids(self, owner: str, ids: list[str]) -> None:
-        ns = self._namespace(owner)
-        for i in range(0, len(ids), 1000):
-            await self._call(self._idx().delete, ids=ids[i:i + 1000], namespace=ns)
+    async def delete_owner(self, owner: str) -> None:
+        await self._ensure_ready()
+        flt = _owner_filter(owner)
+        await self._call(lambda: self.client.delete(
+            self.collection, points_selector=models.FilterSelector(filter=flt), wait=True))
 
-    async def delete_namespace(self, owner: str) -> None:
-        try:
-            await self._call(self._idx().delete, delete_all=True, namespace=self._namespace(owner))
-        except UpstreamUnavailable:
-            # Deleting a namespace that does not exist yet is not an error.
-            logger.info("namespace delete skipped or failed for %s", owner)
+    async def count(self, owner: str) -> int:
+        await self._ensure_ready()
+        res = await self._call(lambda: self.client.count(
+            self.collection, count_filter=_owner_filter(owner), exact=True))
+        return res.count
+
+    async def healthy(self) -> bool:
+        """Cached ping for /health: a success is reused for 60 s, a failure only for 5 s."""
+        checked_at, ok = self._health
+        if time.monotonic() - checked_at > (60 if ok else 5):
+            ok = await self.ping()
+            self._health = (time.monotonic(), ok)
+        return ok
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.close()
 
     async def ping(self) -> bool:
         try:
-            await self._call(self._client().describe_index, self.s.pinecone_index)
+            # A probe is ONE short attempt and never runs collection setup (that can take much longer).
+            await self._call(lambda: self.client.get_collections(), retries=0, timeout=5.0)
             return True
         except UpstreamUnavailable:
             return False
-
-
-def _matches(res) -> list[dict]:
-    raw = res["matches"] if isinstance(res, dict) else getattr(res, "matches", [])
-    out = []
-    for m in raw or []:
-        if isinstance(m, dict):
-            out.append(m)
-        else:
-            out.append({"id": m.id, "score": m.score, "metadata": getattr(m, "metadata", None)})
-    return out

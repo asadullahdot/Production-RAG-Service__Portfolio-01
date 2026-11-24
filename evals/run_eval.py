@@ -1,7 +1,7 @@
 """One-command evaluation: ``python -m evals.run_eval --config all`` (PLAN.md §12).
 
 For each chunking config (A 1000/200, B 500/100) it re-ingests the corpus under an isolated internal owner,
-its own SQLite file and its own Pinecone namespace, then measures retrieval (hit@k, recall@k, MRR), answers
+its own SQLite file and its own Qdrant collection (<name>_eval), then measures retrieval (hit@k, recall@k, MRR), answers
 every question, runs the LLM judge, tunes the similarity threshold on the dev split and reports on the test split.
 """
 from __future__ import annotations
@@ -16,10 +16,11 @@ from pathlib import Path
 
 from app.config import Settings, get_settings
 from app.container import build_container
+from app.generation import build_user_prompt
 from app.db import Database
 from app.ingestion.service import IngestionService
-from app.ingestion.store import PineconeStore, VectorStore
-from app.openai_client import OpenAIClient
+from app.ingestion.store import QdrantStore, VectorStore
+from app.llm_guard import LLMGuard
 from app.retrieval import retrieve
 from app.schemas import AskRequest
 from evals import metrics
@@ -34,7 +35,10 @@ CONFIGS = {"A": (1000, 200), "B": (500, 100)}
 def load_golden(path: Path) -> list[dict]:
     data = json.loads(path.read_text(encoding="utf-8"))
     questions = data["questions"] if isinstance(data, dict) else data
-    if not any("split" in q for q in questions):
+    have = sum("split" in q for q in questions)
+    if have not in (0, len(questions)):
+        raise ValueError("golden set: either every question has a \"split\" or none does")
+    if have == 0:
         metrics.assign_split(questions)
     return questions
 
@@ -45,6 +49,12 @@ def git_commit() -> str:
                               timeout=5).stdout.strip() or "unknown"
     except Exception:
         return "unknown"
+
+
+def chunks_in_prompt(question: str, raw_chunks, settings: Settings):
+    """The chunks the generator actually saw: raw top-k above the threshold, cut at the context cap."""
+    kept = [c for c in raw_chunks if c.score >= settings.similarity_threshold]
+    return build_user_prompt(question, kept, settings.max_context_chars)[1]
 
 
 async def evaluate_config(name: str, questions: list[dict], corpus_files: list[Path], settings: Settings, *,
@@ -61,7 +71,7 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
     ingestion = IngestionService(cfg_settings, container.db, store, cached,
                                  allowed_types={"pdf", "docx", "pptx", "txt", "md"}, chunk_size=size, chunk_overlap=overlap)
 
-    await store.delete_namespace(owner)  # wipe and re-ingest every run
+    await store.delete_owner(owner)  # wipe and re-ingest every run
     for f in corpus_files:
         await ingestion.upload(owner, f.name, f.read_bytes(), None)
     docs = container.db.list_documents(owner)
@@ -93,16 +103,19 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
         resp = await container.ask.ask(owner, AskRequest(question=q["question"]))
         row.update(refused=resp.refused, reason=resp.reason, answer=resp.answer,
                    input_tokens=resp.usage.input_tokens, output_tokens=resp.usage.output_tokens,
-                   latency_ms=cached.last.get("latency_ms", resp.latency_ms) if resp.usage.input_tokens else 0)
+                   generation_ms=cached.last.get("latency_ms", 0) if resp.usage.input_tokens and resp.reason is None else 0)
         row["citations"] = [c.n for c in resp.citations]
         if use_judge and not resp.refused:
-            v = await judge_answer(cached, q["question"], [c.model_dump() for c in resp.retrieved_chunks], resp.answer,
+            # The judge must see exactly the chunks that were in the prompt: above the threshold and within the
+            # context cap, not the whole raw top-k.
+            in_prompt = chunks_in_prompt(q["question"], resp.retrieved_chunks, tuned)
+            v = await judge_answer(cached, q["question"], [c.model_dump() for c in in_prompt], resp.answer,
                                    q.get("reference_answer") if q["answerable"] else None)
             row.update(faithfulness=v.faithfulness, correctness=v.correctness, declines=v.declines,
                        judge_parse_error=v.parse_error, n_doc_claims=len(v.document_claims))
-        elif q["answerable"]:
+        elif q["answerable"] and resp.refused:
             row.update(correctness=0.0)  # over-refusal scores 0
-    await store.delete_namespace(owner)
+    await store.delete_owner(owner)
     return {"config": name, "chunk_size": size, "chunk_overlap": overlap, "documents": len(docs), "chunks": num_chunks,
             "threshold": threshold, "dev_curve": curve, "rows": rows}
 
@@ -114,17 +127,18 @@ def summarise(result: dict, split: str = "test") -> dict:
     answered_ans = [r for r in ans if not r.get("refused")]
     una_ok = [r for r in una if r.get("refused") or r.get("declines")]
     faith = [r["faithfulness"] for r in answered_ans if r.get("faithfulness") is not None]
-    lat = [r["latency_ms"] for r in rows if r.get("latency_ms")]
+    lat = [r["generation_ms"] for r in rows if r.get("generation_ms")]
     tokens = [r.get("input_tokens", 0) + r.get("output_tokens", 0) for r in rows]
     return {
         "split": split, "n_answerable": len(ans), "n_unanswerable": len(una),
         "hit_at_k": metrics.mean(r["hit"] for r in ans), "mrr": metrics.mean(r["mrr"] for r in ans),
         "recall_at_k": metrics.mean(r["recall"] for r in ans),
         "faithfulness": metrics.mean(faith),
-        "correctness": metrics.mean(r.get("correctness", 0.0) for r in ans),
+        "correctness": metrics.mean(r.get("correctness", 0.0) for r in ans if not r.get("judge_parse_error")),
+        "judge_parse_errors": sum(1 for r in rows if r.get("judge_parse_error")),  # excluded from correctness/faithfulness
         "unanswerable_refused": (len(una_ok) / len(una)) if una else None,
         "over_refusal_rate": (sum(1 for r in ans if r.get("refused")) / len(ans)) if ans else None,
-        "latency_ms_p50": metrics.percentile(lat, 0.5), "latency_ms_p95": metrics.percentile(lat, 0.95),
+        "generation_ms_p50": metrics.percentile(lat, 0.5), "generation_ms_p95": metrics.percentile(lat, 0.95),
         "tokens_per_question": metrics.mean(tokens),
     }
 
@@ -156,8 +170,8 @@ def pick_winner(a: dict, b: dict, min_net_questions: int = 2) -> dict:
 def print_summary(results: dict) -> None:
     def fmt(v):
         return "-" if v is None else (f"{v:.3f}" if isinstance(v, float) else str(v))
-    cols = ["hit_at_k", "mrr", "recall_at_k", "faithfulness", "correctness", "unanswerable_refused", "over_refusal_rate",
-            "latency_ms_p50", "latency_ms_p95", "tokens_per_question"]
+    cols = ["hit_at_k", "mrr", "recall_at_k", "faithfulness", "correctness", "unanswerable_refused", "over_refusal_rate", "judge_parse_errors",
+            "generation_ms_p50", "generation_ms_p95", "tokens_per_question"]
     print(f"\nTest-split results ({results['date']}, commit {results['git_commit']}, cached calls: {results['cache']['hits']})")
     print(f"{'config':<8}{'thr':>7}  " + "  ".join(f"{c[:14]:>14}" for c in cols))
     for name, r in results["configs"].items():
@@ -180,9 +194,9 @@ async def main_async(args) -> int:
         return 2
     questions = load_golden(golden_path)
     cache = DiskCache()
-    inner = OpenAIClient(settings)
-    store = PineconeStore(settings)
-    await store.ensure_index()
+    inner = LLMGuard(settings)
+    store = QdrantStore(settings, collection=f"{settings.qdrant_collection}_eval")  # never the live collection
+    await store.ensure_collection()
     work_dir = ROOT / "data"
     work_dir.mkdir(exist_ok=True)
 

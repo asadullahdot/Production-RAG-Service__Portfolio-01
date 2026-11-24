@@ -42,7 +42,7 @@ def test_upload_list_ask_delete_reask(client, env):
     assert body["usage"]["input_tokens"] > 0 and body["request_id"]
 
     assert client.delete(f"/documents/{doc['doc_id']}").status_code == 204
-    assert env.store.count("local") == 0
+    assert env.count("local") == 0
     again = client.post("/ask", json={"question": "What is the refund policy for returns?"}).json()
     assert again["refused"] is True and again["reason"] == "no_documents"
     assert client.get("/documents").json()["documents"] == []
@@ -89,7 +89,7 @@ def test_too_large_is_413(tmp_path):
 def test_too_many_chunks_is_413_and_nothing_stored(tmp_path):
     e = Env(tmp_path, max_chunks_per_doc=1, chunk_size=40, chunk_overlap=0)
     r = upload(e.client)
-    assert r.status_code == 413 and e.store.count("local") == 0
+    assert r.status_code == 413 and e.count("local") == 0
 
 
 def test_validation_errors_use_one_error_shape(client):
@@ -143,7 +143,7 @@ def test_rate_limit_429_with_retry_after(tmp_path):
 
 def test_vector_store_down_is_503(client, env):
     upload(client)
-    env.store.fail = True
+    env.vector_db_down()
     r = client.post("/ask", json={"question": "refund policy returns"})
     assert r.status_code == 503 and r.json()["error"]["code"] == "upstream_unavailable"
     other = make_pdf(["another document with different words entirely, long enough to pass the minimum text length check"])
@@ -154,7 +154,7 @@ def test_embedding_failure_cleans_up_and_is_503(client, env):
     env.openai.fail_embed = True
     assert upload(client).status_code == 503
     env.openai.fail_embed = False
-    assert env.store.count("local") == 0 and client.get("/documents").json()["documents"] == []
+    assert env.count("local") == 0 and client.get("/documents").json()["documents"] == []
 
 
 def test_failed_registry_write_cleans_up_vectors(env, client, monkeypatch):
@@ -162,13 +162,13 @@ def test_failed_registry_write_cleans_up_vectors(env, client, monkeypatch):
         raise RuntimeError("db down")
     monkeypatch.setattr(env.container.db, "add_document", boom)
     assert upload(client).status_code == 503
-    assert env.store.count("local") == 0
+    assert env.count("local") == 0
 
 
 def test_stale_vector_never_surfaces(client, env):
     doc = upload(client).json()
     env.container.db.delete_document("local", doc["doc_id"])  # registry says gone, vectors remain (orphans)
-    assert env.store.count("local") > 0
+    assert env.count("local") > 0
     body = client.post("/ask", json={"question": "refund policy returns"}).json()
     assert body["reason"] == "no_documents" and body["retrieved_chunks"] == []
 

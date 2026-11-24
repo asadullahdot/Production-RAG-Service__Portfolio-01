@@ -1,4 +1,4 @@
-"""Embed query → Pinecone search (owner namespace) → registry filter → similarity threshold (PLAN.md §8.2)."""
+"""Embed query → Qdrant search (owner filter) → registry filter → similarity threshold (PLAN.md §8.2)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,13 +28,14 @@ def _to_chunk(n: int, hit) -> RetrievedChunk:
 
 async def retrieve(owner_id: str, question: str, *, embedder: Embedder, store: VectorStore, db: Database,
                    settings: Settings, top_k: int | None = None, doc_ids: list[str] | None = None,
-                   threshold: float | None = None) -> RetrievalResult:
+                   threshold: float | None = None, vector: list[float] | None = None) -> RetrievalResult:
     k = min(top_k or settings.top_k, settings.top_k_max)
-    vector = (await embedder.embed([question]))[0]
-    hits = await store.query(owner_id, vector, k, doc_ids)
+    if vector is None:
+        vector = (await embedder.embed([question]))[0]
+    hits = await store.query(owner_id, vector, k * 3, doc_ids)  # over-fetch: orphans dropped below must not starve the top-k
     registered = await run_in_threadpool(db.doc_ids, owner_id)
     # The registry is the source of truth: leftover vectors from failed cleanups never surface.
-    hits = [h for h in hits if h.metadata.get("doc_id") in registered]
+    hits = [h for h in hits if h.metadata.get("doc_id") in registered][:k]
     raw = [_to_chunk(i, h) for i, h in enumerate(hits, start=1)]
     limit = settings.similarity_threshold if threshold is None else threshold
     return RetrievalResult(raw=raw, kept=[c for c in raw if c.score >= limit])

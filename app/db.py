@@ -73,8 +73,8 @@ class Database:
 
     # ---- documents registry
     def add_document(self, *, doc_id: str, owner_id: str, file_name: str, file_type: str,
-                     num_pages: int, num_chunks: int, file_hash: str) -> dict:
-        uploaded_at = now_iso()
+                     num_pages: int, num_chunks: int, file_hash: str, uploaded_at: str | None = None) -> dict:
+        uploaded_at = uploaded_at or now_iso()
         self._run(
             "INSERT INTO documents VALUES (?,?,?,?,?,?,?,?)",
             (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at),

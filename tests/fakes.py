@@ -10,7 +10,7 @@ import math
 import re
 from collections import deque
 
-from app.openai_client import LLMResult
+from app.llm_guard import LLMResult
 
 DIM = 256
 _STOP = {"the", "a", "an", "is", "are", "of", "to", "and", "in", "on", "for", "what", "how", "does", "do", "it", "this", "that"}
@@ -28,7 +28,7 @@ def embed_text(text: str) -> list[float]:
 
 
 class FakeOpenAI:
-    """Same surface as ``OpenAIClient`` (embed / generate / judge)."""
+    """Same surface as ``LLMGuard`` (embed / generate / judge)."""
 
     def __init__(self):
         self.script: deque[str] = deque()
@@ -44,7 +44,7 @@ class FakeOpenAI:
             raise UpstreamUnavailable()
         return [embed_text(t) for t in texts]
 
-    async def generate(self, system, user):
+    async def generate(self, system, user, effort=None):
         self.llm_calls += 1
         self.prompts.append((system, user))
         if self.script:

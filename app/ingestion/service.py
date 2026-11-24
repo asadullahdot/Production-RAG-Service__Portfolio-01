@@ -1,7 +1,7 @@
 """Upload / delete / list orchestration (PLAN.md §8.1, §4.4).
 
 Order matters: the SQLite registry row is written LAST; any failure after embedding starts
-deletes the computed vector ids so no orphans survive.
+deletes the document's points by filter so no orphans survive.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from app.ingestion.chunking import chunk_sections
 from app.ingestion.embedding import Embedder, embed_texts
 from app.ingestion.extraction import extract
 from app.ingestion.store import VectorItem, VectorStore
+from app.llm_guard import deadline_var
 from app.logging_setup import log_event
 
 logger = logging.getLogger("rag.ingestion")
@@ -46,34 +47,41 @@ class IngestionService:
         self.allowed_types = allowed_types or {t.strip() for t in settings.allowed_file_types.split(",") if t.strip()}
         self.chunk_size = chunk_size or settings.chunk_size
         self.chunk_overlap = chunk_overlap if chunk_overlap is not None else settings.chunk_overlap
-        self._locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._locks: dict[tuple[str, str], list] = {}  # key -> [lock, users]; removed when idle
 
     # ------------------------------------------------------------------ upload
     async def upload(self, owner_id: str, filename: str, data: bytes, content_type: str | None = None) -> dict:
-        file_type = guardrails.validate_upload(filename, content_type, data, self.s, self.allowed_types)
+        file_type = await run_in_threadpool(guardrails.validate_upload, filename, content_type, data, self.s,
+                                            self.allowed_types)
         file_hash = await run_in_threadpool(lambda: hashlib.sha256(data).hexdigest())
 
         key = (owner_id, file_hash)
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:  # one in-flight ingest per (owner, hash); the unique index is the final guard
-            return await self._ingest(owner_id, filename, data, file_type, file_hash)
+        entry = self._locks.setdefault(key, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:  # one in-flight ingest per (owner, hash); the unique index is the final guard
+                return await self._ingest(owner_id, filename, data, file_type, file_hash)
+        finally:
+            entry[1] -= 1
+            if entry[1] == 0:
+                self._locks.pop(key, None)
 
     async def _ingest(self, owner_id: str, filename: str, data: bytes, file_type: str, file_hash: str) -> dict:
         existing = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
         if existing:
             raise DuplicateDocument(details={"doc_id": existing["doc_id"]})
 
-        extracted = await run_in_threadpool(extract, data, file_type)
+        extracted = await run_in_threadpool(extract, data, file_type, self.s.max_pages)
         if extracted.total_chars < self.s.min_extracted_chars:
             raise NoText()
-        if extracted.num_pages > self.s.max_pages:
+        if file_type in ("pdf", "pptx") and extracted.num_pages > self.s.max_pages:  # DOCX/MD sections are not pages: the chunk cap bounds them
             raise FileTooLarge(f"The document has {extracted.num_pages} pages (max {self.s.max_pages}).")
 
         for section in extracted.sections:  # B6: flag instruction-like text; it stays data
-            hits = guardrails.scan_document_text(section.text)
+            hits = guardrails.scan_document_text(section.page_content)
             if hits:
                 log_event(logger, "document contains instruction-like text (kept as data)", logging.WARNING,
-                          file_name=filename, page=section.page, patterns=len(hits))
+                          file_name=filename, page=section.metadata["page"], patterns=len(hits))
 
         drafts = await run_in_threadpool(chunk_sections, extracted.sections, self.chunk_size, self.chunk_overlap)
         if not drafts:
@@ -94,18 +102,18 @@ class IngestionService:
                     "uploaded_at": uploaded_at, "text": d.text})
                 for i, d in enumerate(drafts)
             ]
-            await self.store.upsert(owner_id, items)
-            await self._wait_visible(owner_id, ids[-1])
+            await self.store.upsert(owner_id, items)  # wait=True: points are searchable when this returns
             try:
                 row = await run_in_threadpool(
                     lambda: self.db.add_document(
                         doc_id=doc_id, owner_id=owner_id, file_name=filename, file_type=file_type,
-                        num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash))
+                        num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash,
+                        uploaded_at=uploaded_at))  # the same timestamp as the vector payload
             except sqlite3.IntegrityError as exc:  # lost a race on the unique (owner, hash) index
                 other = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
                 raise DuplicateDocument(details={"doc_id": other["doc_id"] if other else None}) from exc
         except BaseException as exc:
-            await self._cleanup(owner_id, ids)
+            await self._cleanup(owner_id, doc_id)
             if isinstance(exc, AppError):
                 raise
             if isinstance(exc, (Exception,)):
@@ -116,21 +124,15 @@ class IngestionService:
                   seconds=round(time.monotonic() - started, 2))
         return doc_out(row)
 
-    async def _wait_visible(self, owner_id: str, last_id: str) -> None:
-        deadline = time.monotonic() + self.s.index_ready_timeout_s
-        while True:
-            if await self.store.exists(owner_id, last_id):
-                return
-            if time.monotonic() >= deadline:
-                log_event(logger, "vectors not yet queryable after timeout; continuing", logging.WARNING)
-                return
-            await asyncio.sleep(0.5)
-
-    async def _cleanup(self, owner_id: str, ids: list[str]) -> None:
+    async def _cleanup(self, owner_id: str, doc_id: str) -> None:
+        async def delete():
+            deadline_var.set(None)  # the request deadline may be spent; the cleanup still gets Qdrant's own timeout
+            await self.store.delete_document(owner_id, doc_id)
         try:
-            await asyncio.shield(self.store.delete_ids(owner_id, ids))
-        except Exception as exc:
-            log_event(logger, "cleanup of partial upload failed", logging.ERROR, error=type(exc).__name__)
+            await asyncio.shield(delete())
+        except Exception as exc:  # orphans are harmless to answers (registry filter) but worth a loud log line
+            log_event(logger, "cleanup of partial upload failed; orphan vectors remain", logging.ERROR,
+                      error=type(exc).__name__, doc_id=doc_id, owner_id=owner_id)
 
     # ------------------------------------------------------------------ list / delete
     async def list(self, owner_id: str) -> list[dict]:
@@ -141,5 +143,5 @@ class IngestionService:
         row = await run_in_threadpool(self.db.get_document, owner_id, doc_id)
         if row is None:
             raise NotFound("Document not found.")
-        await self.store.delete_ids(owner_id, vector_ids(doc_id, row["num_chunks"]))  # 503 on failure, row kept
+        await self.store.delete_document(owner_id, doc_id)  # one filtered delete; 503 on failure, row kept
         await run_in_threadpool(self.db.delete_document, owner_id, doc_id)

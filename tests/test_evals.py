@@ -6,13 +6,13 @@ import asyncio
 import pytest
 
 from app.config import Settings
-from app.ingestion.store import InMemoryStore
-from app.openai_client import LLMResult
+from app.ingestion.store import QdrantStore
+from app.llm_guard import LLMResult
 from evals import metrics
 from evals.cache import CachedOpenAI, DiskCache
 from evals.judge import parse_verdict
 from evals.run_eval import evaluate_config, pick_winner, summarise
-from tests.fakes import FakeOpenAI
+from tests.fakes import DIM, FakeOpenAI
 from tests.make_files import make_pdf
 
 
@@ -123,11 +123,13 @@ def test_evaluate_config_offline_end_to_end(tmp_path):
         {"id": "q5", "question": "qqqq vvvv jjjj nothing matches", "type": "unanswerable", "answerable": False,
          "source_doc": None, "source_page": None, "evidence": None, "reference_answer": None, "split": "test"},
     ]
-    settings = Settings(_env_file=None, index_ready_timeout_s=1, similarity_threshold=0.15)
+    settings = Settings(_env_file=None, embedding_dim=DIM, qdrant_path=":memory:", similarity_threshold=0.15)
+    store = QdrantStore(settings)
+    asyncio.run(store.ensure_collection())
     results = {}
     for name in ("A", "B"):
         results[name] = asyncio.run(evaluate_config(
-            name, questions, files, settings, inner_openai=JudgeFake(), store=InMemoryStore(),
+            name, questions, files, settings, inner_openai=JudgeFake(), store=store,
             cache=DiskCache(tmp_path / f"cache{name}"), work_dir=tmp_path))
         results[name]["summary_test"] = summarise(results[name], "test")
     for r in results.values():

@@ -8,11 +8,12 @@ import io
 import re
 import unicodedata
 import zipfile
+import zlib
 from dataclasses import dataclass
 
 from app.config import (API_KEY_REGEXES, DOCUMENT_INSTRUCTION_PATTERNS, INJECTION_PATTERNS,
-                        JAILBREAK_PATTERNS, PROMPT_CANARY, Settings)
-from app.errors import CorruptFile, EmptyFile, FileTooLarge, InvalidRequest, MaliciousFile, UnsupportedType
+                        JAILBREAK_PATTERNS, PROMPT_CANARY, SOFT_PATTERNS, Settings)
+from app.errors import CorruptFile, EmptyFile, EncryptedFile, FileTooLarge, InvalidRequest, MaliciousFile, UnsupportedType
 
 # ----------------------------------------------------------------------------- upload
 EXT_TO_TYPE = {".pdf": "pdf", ".docx": "docx", ".pptx": "pptx", ".txt": "txt", ".md": "md", ".markdown": "md"}
@@ -81,6 +82,19 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
         raise MaliciousFile("The archive is too large when decompressed.")
     if any(n.lower().endswith("vbaproject.bin") for n in names):
         raise MaliciousFile("Files containing macros are not accepted.")
+    # The sizes above are only what the archive claims. Decompress with a hard cap to see what it really holds.
+    budget = settings.max_zip_uncompressed_mb * 1024 * 1024
+    try:
+        for info in infos:
+            with zf.open(info) as member:
+                while chunk := member.read(1024 * 1024):
+                    budget -= len(chunk)
+                    if budget < 0:
+                        raise MaliciousFile("The archive is too large when decompressed.")
+    except RuntimeError as exc:  # an encrypted member: "password required"
+        raise EncryptedFile() from exc
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error, EOFError, NotImplementedError) as exc:
+        raise CorruptFile() from exc
 
 
 # ----------------------------------------------------------------------------- input
@@ -88,10 +102,12 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
 class InputVerdict:
     allowed: bool
     reason: str | None = None  # "prompt_injection" | "jailbreak"
+    soft: bool = False  # only soft (ambiguous) matches may be released by the model recheck
 
 
 def _normalise(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")  # zero-width and other invisible characters
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -113,11 +129,13 @@ def check_question(question: str | None, settings: Settings) -> str:
 
 def check_input(question: str) -> InputVerdict:
     text = _normalise(question)
-    if any(p.search(text) for p in _JB):
-        return InputVerdict(False, "jailbreak")
-    if any(p.search(text) for p in _INJ):
-        return InputVerdict(False, "prompt_injection")
-    return InputVerdict(True)
+    jb = [p for p in _JB if p.search(text)]
+    inj = [p for p in _INJ if p.search(text)]
+    hits = jb + inj
+    if not hits:
+        return InputVerdict(True)
+    soft = all(p.pattern in SOFT_PATTERNS for p in hits)  # one hard match makes the whole refusal hard
+    return InputVerdict(False, "jailbreak" if jb else "prompt_injection", soft)
 
 
 # ----------------------------------------------------------------------------- output

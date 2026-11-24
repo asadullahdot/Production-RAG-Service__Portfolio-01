@@ -58,7 +58,7 @@ def parse_verdict(text: str) -> JudgeVerdict:
         correctness = min(1.0, max(0.0, round(correctness * 2) / 2))
         claims = [c for c in data.get("claims", []) if isinstance(c, dict)]
         return JudgeVerdict(claims=claims, correctness=correctness, declines=bool(data.get("declines", False)))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):  # incl. Infinity from json.loads
         return JudgeVerdict(parse_error=True)
 
 

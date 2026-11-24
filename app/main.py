@@ -1,7 +1,9 @@
 """FastAPI app: routes, middleware and exception handlers ONLY — no business logic (PLAN.md §4, §7)."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,9 +18,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import auth
 from app.config import Settings, get_settings
 from app.container import Container, build_container
-from app.errors import AppError, FileTooLarge, RateLimited, UpstreamUnavailable
+from app.errors import AppError, RateLimited, UpstreamUnavailable
 from app.logging_setup import log_event, new_request_id, request_id_var, setup_logging
-from app.openai_client import deadline_var
+from app.llm_guard import deadline_var
+from app.ratelimit import rate_key
+from app.upload_limit import UploadSizeLimit
 from app.schemas import (AskRequest, AskResponse, DocumentList, DocumentOut, ErrorResponse, HealthOut,
                          SignupRequest, TokenOut, UserOut)
 
@@ -39,6 +43,9 @@ def _error(request_id: str, status: int, code: str, message: str, details: dict 
     return resp
 
 
+_SAFE_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
 def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
     settings = settings or get_settings()
     setup_logging()
@@ -47,12 +54,20 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def lifespan(app: FastAPI):
         auth.validate_auth_config(settings)
         app.state.container = container or build_container(settings)
-        app.state.pinecone_checked = (0.0, False)
         try:
-            await app.state.container.store.ensure_index()
+            await asyncio.wait_for(app.state.container.store.ensure_collection(),
+                                   timeout=settings.qdrant_timeout_s)  # never hold startup longer than one timeout
         except Exception as exc:  # the UI/docs should still start; requests will return 503
-            log_event(logger, "vector index not ready at startup", logging.WARNING, error=str(exc)[:200])
+            log_event(logger, "vector collection not ready at startup", logging.WARNING, error=str(exc)[:200])
         yield
+        for owner_obj in (app.state.container.db, app.state.container.store):  # release the SQLite file and Qdrant client/lock
+            try:
+                closer = getattr(owner_obj, "close", None)
+                result = closer() if closer else None
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as exc:
+                log_event(logger, "shutdown cleanup failed", logging.WARNING, error=type(exc).__name__)
 
     app = FastAPI(
         title="Production RAG Service",
@@ -63,33 +78,43 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     )
     # An injected container (tests) is usable without running the lifespan.
     app.state.container = container
-    app.state.pinecone_checked = (0.0, False)
 
     # ------------------------------------------------------------------ middleware
+    app.add_middleware(UploadSizeLimit, settings=settings)  # inner: runs after request_context
     @app.middleware("http")
     async def request_context(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or new_request_id()
+        supplied = request.headers.get("X-Request-ID", "")
+        request_id = supplied if _SAFE_REQUEST_ID.fullmatch(supplied) else new_request_id()  # never trust header text
         token_ctx = request_id_var.set(request_id)
         started = time.monotonic()
         key = (request.method, request.url.path)
         factor = 3 if key == ("POST", "/documents") else 1
         dl_ctx = deadline_var.set(started + settings.request_deadline_s * factor)
+        status = 500  # what is logged if an exception escapes
         try:
             c: Container = request.app.state.container
+            response = None
             if key in RATE_LIMITED_ROUTES:
-                allowed, retry_after = c.limiter.check(_rate_key(request, settings))
+                # one bucket per route group, so a burst of uploads does not use up the questions (and vice versa)
+                allowed, retry_after = c.limiter.check(f"{key[1].split('/')[1]}:{rate_key(request, settings)}")
                 if not allowed:
-                    return _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
-                                  headers={"Retry-After": str(retry_after)})
-            response = await call_next(request)
-        finally:
+                    response = _error(request_id, 429, "rate_limited", "Too many requests. Please slow down.",
+                                      headers={"Retry-After": str(retry_after)})
+            if response is None:
+                try:
+                    response = await call_next(request)
+                except Exception:  # built here, while the request id is still set (the outer handler would lose it)
+                    logger.exception("unhandled error")  # traceback stays in server logs only
+                    response = _error(request_id, 500, "internal_error", "Internal server error.")
+            status = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:  # every request is logged, including 429s and crashes
+            log_event(logger, "request", method=request.method, path=request.url.path, status=status,
+                      latency_ms=int((time.monotonic() - started) * 1000),
+                      user_id=getattr(request.state, "owner_id", None))
             deadline_var.reset(dl_ctx)
-        response.headers["X-Request-ID"] = request_id
-        log_event(logger, "request", method=request.method, path=request.url.path, status=response.status_code,
-                  latency_ms=int((time.monotonic() - started) * 1000),
-                  user_id=getattr(request.state, "owner_id", None))
-        request_id_var.reset(token_ctx)
-        return response
+            request_id_var.reset(token_ctx)
 
     # ------------------------------------------------------------------ error handlers
     @app.exception_handler(AppError)
@@ -107,8 +132,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
 
     @app.exception_handler(StarletteHTTPException)
     async def http_handler(request: Request, exc: StarletteHTTPException):
-        code = {404: "not_found", 405: "invalid_request", 401: "unauthorized"}.get(exc.status_code, "invalid_request")
-        return _error(request_id_var.get(), exc.status_code, code, str(exc.detail))
+        code = {404: "not_found", 405: "invalid_request", 401: "unauthorized", 413: "file_too_large"}.get(exc.status_code, "invalid_request")
+        return _error(request_id_var.get(), exc.status_code, code, str(exc.detail), headers=dict(exc.headers or {}))
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
@@ -142,10 +167,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def upload_document(request: Request, file: UploadFile = File(...), owner_id: str = Depends(owner)):
         c: Container = request.app.state.container
         limit = c.settings.max_upload_bytes
-        declared = request.headers.get("content-length")
-        if declared and declared.isdigit() and int(declared) > limit + 1024 * 1024:
-            raise FileTooLarge(f"File exceeds the {c.settings.max_upload_mb} MB limit.")
-        data = await file.read(limit + 1)  # bounded read: never buffers more than limit + 1 bytes
+        data = await file.read(limit + 1)  # the body is already capped by UploadSizeLimit while it streams in
         row = await c.ingestion.upload(owner_id, file.filename or "", data, file.content_type)
         return DocumentOut(**row)
 
@@ -174,12 +196,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def health(request: Request):
         c: Container = request.app.state.container
         sqlite_ok = c.db.ping()
-        checked_at, pinecone_ok = request.app.state.pinecone_checked
-        if time.monotonic() - checked_at > 60:  # cached so probes don't hit the vector DB
-            pinecone_ok = await c.store.ping()
-            request.app.state.pinecone_checked = (time.monotonic(), pinecone_ok)
-        ok = sqlite_ok and pinecone_ok
-        body = HealthOut(status="ok" if ok else "degraded", sqlite=sqlite_ok, pinecone=pinecone_ok,
+        vector_db_ok = await c.store.healthy()  # cached inside the store so probes don't hammer the vector DB
+        ok = sqlite_ok and vector_db_ok
+        body = HealthOut(status="ok" if ok else "degraded", sqlite=sqlite_ok, qdrant=vector_db_ok,
                          auth_enabled=c.settings.auth_enabled)
         return JSONResponse(body.model_dump(), status_code=200 if ok else 503)
 
@@ -190,22 +209,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
-
-
-def _rate_key(request: Request, settings: Settings) -> str:
-    """User id when a valid token is present (no DB hit), otherwise the client IP (always IP for /auth/*)."""
-    if settings.auth_enabled and not request.url.path.startswith("/auth/"):
-        header = request.headers.get("authorization", "")
-        if header.lower().startswith("bearer "):
-            user_id = auth.decode_token(header[7:], settings)
-            if user_id:
-                return f"user:{user_id}"
-    ip = request.client.host if request.client else "unknown"
-    if settings.behind_proxy:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            ip = forwarded.split(",")[0].strip()
-    return f"ip:{ip}"
 
 
 app = create_app()

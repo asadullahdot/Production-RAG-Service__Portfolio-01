@@ -10,18 +10,19 @@ import io
 import re
 from dataclasses import dataclass
 
-from app.errors import CorruptFile, EncryptedFile
+from langchain_core.documents import Document
+
+from app.errors import CorruptFile, EncryptedFile, FileTooLarge
 
 
-@dataclass
-class Section:
-    page: int  # 1-based page / section / slide number
-    text: str
+def Section(page: int, text: str) -> Document:
+    """One page / section / slide as a LangChain ``Document`` (``metadata["page"]`` is 1-based)."""
+    return Document(page_content=text, metadata={"page": page})
 
 
 @dataclass
 class Extracted:
-    sections: list[Section]
+    sections: list[Document]
 
     @property
     def num_pages(self) -> int:
@@ -29,13 +30,13 @@ class Extracted:
 
     @property
     def total_chars(self) -> int:
-        return sum(len(s.text.strip()) for s in self.sections)
+        return sum(len(s.page_content.strip()) for s in self.sections)
 
 
-def extract(data: bytes, file_type: str) -> Extracted:
+def extract(data: bytes, file_type: str, max_pages: int | None = None) -> Extracted:
     try:
         if file_type == "pdf":
-            return _pdf(data)
+            return _pdf(data, max_pages)
         if file_type == "docx":
             return _docx(data)
         if file_type == "pptx":
@@ -44,7 +45,7 @@ def extract(data: bytes, file_type: str) -> Extracted:
             return Extracted([Section(1, _decode(data))])
         if file_type == "md":
             return _markdown(_decode(data))
-    except (EncryptedFile, CorruptFile):
+    except (EncryptedFile, CorruptFile, FileTooLarge):
         raise
     except Exception as exc:  # parser libraries raise many unrelated types on bad input
         raise CorruptFile() from exc
@@ -55,12 +56,14 @@ def _decode(data: bytes) -> str:
     return data.decode("utf-8-sig")
 
 
-def _pdf(data: bytes) -> Extracted:
+def _pdf(data: bytes, max_pages: int | None = None) -> Extracted:
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data), strict=False)
     if reader.is_encrypted:
         raise EncryptedFile()
+    if max_pages is not None and len(reader.pages) > max_pages:  # reject before the costly text extraction
+        raise FileTooLarge(f"The document has {len(reader.pages)} pages (max {max_pages}).")
     sections = [Section(i, (page.extract_text() or "")) for i, page in enumerate(reader.pages, start=1)]
     return Extracted(sections)
 
