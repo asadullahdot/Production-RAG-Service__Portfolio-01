@@ -1,7 +1,7 @@
 # PLAN.md — Production RAG Service (single master plan)
 
 > **Who this is for:** an AI coding model or engineer who will build the project. This is the **only** plan document. Rewritten 24 Nov 2026 to be shorter and simpler; the previous long version is kept in `_archive/PLAN_before_rewrite_2026-11-24.md` (not committed).
-> **Status:** the MVP exists locally (own-code pipeline, Pinecone, 121 offline tests, never run against live services). **This plan describes the target: LangChain (no LangGraph) + Qdrant.** The migration has **not** started. Do not change code until the owner says so.
+> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 122 offline tests pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
 > **Brief and rubric:** `_requirements/`. **Diagram:** [architecture.html](architecture.html) (PLAN.md wins on any conflict).
 > **Deadline:** Wednesday 25 Nov 2026. Measured evaluation numbers are mandatory (rubric M7 = 0 gives grade F).
 
@@ -41,7 +41,7 @@ Tags: **[OWNER]** needs the owner. **[VERIFIED date]** checked by reading vendor
 | Area | Choice | Why (short) | Trade-off |
 |---|---|---|---|
 | Web | **FastAPI**, async, **one uvicorn worker** | Required async I/O. One worker because the SQLite registry, rate limiter and locks live in one process | Does not scale out (noted in DESIGN.md) |
-| Framework | **LangChain**: `langchain-core`, `langchain-openai`, `langchain-qdrant`, `langchain-text-splitters` | Standard, widely known parts for models, embeddings, vector store, splitter. The brief allows a framework | A few more concepts to explain |
+| Framework | **LangChain**: `langchain-core` (`Document`), `langchain-openai` (`ChatOpenAI`, `OpenAIEmbeddings`), `langchain-text-splitters`. **`langchain-qdrant` is not used at runtime:** `QdrantVectorStore` embeds text itself and needs a sync client, while we embed through `llm_guard` (retries, semaphores, deadline) and want a true async client. The store therefore uses `qdrant-client` directly (`AsyncQdrantClient`) with the same payload layout, so `QdrantVectorStore` could still read the collection | Standard, widely known parts for models, embeddings, vector store, splitter. The brief allows a framework | A few more concepts to explain |
 | What stays our own code | (1) `app/llm_guard.py`, the failure policy. (2) Upload validation and extraction | The SDK's built-in retry cannot do per-service limits, `Retry-After`, no retry on `insufficient_quota`, one request deadline, 503 mapping, and the brief grades these. Stock loaders do not reject zip-bombs, macros, encrypted files, and lose DOCX headings and tables | Two small modules we maintain |
 | Generator | `gpt-6-luna` via `ChatOpenAI` in Responses-API mode, low `reasoning.effort` | Cheapest tier, large context, same vendor and key. $0.10 in / $0.50 out per 1M tokens **[VERIFIED 24 Nov: OpenAI model page]** | Smallest tier may follow citation rules less well. The eval measures it |
 | Judge | `gpt-6.1-terra` ($1 / $5 per 1M) | Bigger and different from the generator, so less self-preference | Same vendor family, so some bias remains. Stated in EVAL.md |
@@ -69,7 +69,7 @@ Tags: **[OWNER]** needs the owner. **[VERIFIED date]** checked by reading vendor
 - **Evals** use the cloud collection `<QDRANT_COLLECTION>_eval` with owners `eval_A` / `eval_B`, wiped with an owner-filtered delete before each run.
 - **Free cluster limits** **[VERIFIED 24 Nov: Qdrant docs]:** 1 node, 0.5 vCPU, 1 GB RAM, 4 GB disk; suspended after 1 week of inactivity, deleted later (two Qdrant pages say 3 or 4 weeks). Reactivation is manual in the console.
 - **Client version:** `langchain-qdrant` 1.2.0 requires `qdrant-client>=1.15.1,<1.16`, so pin `qdrant-client` 1.15.1 (not the newer 1.20.0).
-- **Async:** `QdrantVectorStore` takes only a sync client; its `a*` methods run the sync call in a thread. Use them as they are.
+- **Async:** `AsyncQdrantClient` is used directly (true async, also in embedded mode). `QdrantVectorStore` was rejected for the reasons in the Framework row.
 
 ---
 
@@ -467,7 +467,7 @@ Keep it tight: script it, rehearse once, cut dead time. Show the cached eval out
 
 ## 19. Schedule and migration
 
-### 19.1 Migration to LangChain + Qdrant (nothing starts until the owner says go)
+### 19.1 Migration to LangChain + Qdrant (DONE 24 Nov 2026 — steps 0–5 below kept as the record)
 
 Work on a branch `feature/langchain-qdrant`. Create the tag `pre-langchain` on the current `main` first (rollback point). Each step ends with its tests green.
 

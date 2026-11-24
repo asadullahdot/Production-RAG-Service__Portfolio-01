@@ -35,7 +35,7 @@
 <body>
 <main>
   <h1>Production RAG Service — Layer-by-Layer Flow</h1>
-  <p class="sub">FastAPI · OpenAI (gpt-6-luna answers, text-embedding-3-small) · Pinecone · SQLite · pypdf / python-docx (+ B5 types). Mirrors PLAN.md, which is the source of truth. <span class="opt">B#</span> = optional bonus feature (JWT auth is B1; with <code>AUTH_ENABLED=false</code> the same flow runs with a fixed default owner and no token).</p>
+  <p class="sub">FastAPI · OpenAI (gpt-6-luna answers, text-embedding-3-small) · LangChain · Qdrant · SQLite · pypdf / python-docx (+ B5 types). Mirrors PLAN.md, which is the source of truth. <span class="opt">B#</span> = optional bonus feature (JWT auth is B1; with <code>AUTH_ENABLED=false</code> the same flow runs with a fixed default owner and no token).</p>
 
   <div class="tabs" role="group" aria-label="Flow">
     <button aria-pressed="true" data-f="ask">Ask a question</button>
@@ -61,8 +61,8 @@
       <div class="box"><b>No documents yet</b><span>registry empty → 200 refused: no_documents</span></div></div></div>
     <div class="arrow">clean question</div>
     <div class="layer l4"><h3>4 · Retrieval</h3><small>app/retrieval.py</small>
-      <div class="row"><div class="box"><b>Embed query</b><span>via openai_client.py (timeout, retry, concurrency cap)</span></div>
-      <div class="box"><b>Vector search</b><span>Pinecone, user namespace, cosine similarity, top-k</span></div>
+      <div class="row"><div class="box"><b>Embed query</b><span>via llm_guard.py (timeout, retry, concurrency cap)</span></div>
+      <div class="box"><b>Vector search</b><span>Qdrant, owner_id filter, cosine similarity, top-k</span></div>
       <div class="box"><b>Registry filter</b><span>drop hits whose doc_id is not in the owner's registry (no stale vectors)</span></div>
       <div class="box"><b>Threshold (= off-topic check)</b><span>no chunk ≥ similarity threshold → refusal <i>no_relevant_context</i>, LLM not called</span></div></div></div>
     <div class="arrow">chunks + scores</div>
@@ -96,9 +96,9 @@
       <div class="box"><b>Hash + dedup</b><span>SHA-256; (owner, hash) already in registry → <span class="err">409</span></span></div>
       <div class="box"><b>Extract</b><span>per page / section / slide; no text → <span class="err">400</span>; pages &gt; cap → <span class="err">413</span></span></div>
       <div class="box"><b>Chunk</b><span>RecursiveCharacterTextSplitter, per page; chunks &gt; cap → <span class="err">413</span></span></div>
-      <div class="box"><b>Embed</b><span>batched, concurrent under a semaphore, via openai_client.py</span></div></div></div>
+      <div class="box"><b>Embed</b><span>batched, concurrent under a semaphore, via llm_guard.py</span></div></div></div>
     <div class="arrow">vectors + metadata</div>
-    <div class="layer l5"><h3>5 · Storage</h3><small>Pinecone (vectors + chunk text, namespace per user) · SQLite (documents registry; users with B1)</small>
+    <div class="layer l5"><h3>5 · Storage</h3><small>Qdrant (vectors + chunk text, one collection filtered by owner) · SQLite (documents registry; users with B1)</small>
       <div class="row"><div class="box"><b>1. Upsert</b><span>id {doc_id}:{chunk_idx}; metadata doc_id, owner_id, file_name, page, chunk_idx, text…</span></div>
       <div class="box"><b>2. Wait for visibility</b><span>poll fetch of the last id (eventual consistency)</span></div>
       <div class="box"><b>3. Registry row (last)</b><span>a document exists only once its vectors are stored</span></div>
@@ -113,7 +113,7 @@
     <div class="arrow">HTTP</div>
     <div class="layer l2"><h3>2 · API layer</h3><small>rate limit / JWT as above · id not in the caller's registry → <span class="err">404</span></small></div>
     <div class="arrow">doc_id</div>
-    <div class="layer l4"><h3>3 · Ingestion / store service</h3><small>read num_chunks from the registry → delete vector ids {doc_id}:0…n-1 from the user's namespace (batched) → then remove the registry row. Vector delete fails → <span class="err">503</span>, registry row kept so it can be retried</small></div>
+    <div class="layer l4"><h3>3 · Ingestion / store service</h3><small>delete the document's points with one filtered delete (owner_id + doc_id) → then remove the registry row. Vector delete fails → <span class="err">503</span>, registry row kept so it can be retried</small></div>
     <div class="arrow">204 No Content</div>
     <div class="layer l1"><h3>Verify</h3><small>re-ask: deleted content must never appear (also guaranteed by the registry filter in retrieval)</small></div>
   </section>
@@ -121,7 +121,7 @@
   <h2>Cross-cutting layers</h2>
   <div class="layer l6"><div class="row">
     <div class="box"><b>config.py</b><span>all settings; secrets from env only; AUTH_ENABLED switch</span></div>
-    <div class="box"><b>openai_client.py</b><span>the only OpenAI caller: semaphores, timeouts, retries, Retry-After, request deadline</span></div>
+    <div class="box"><b>llm_guard.py</b><span>the only OpenAI caller: semaphores, timeouts, retries, Retry-After, request deadline</span></div>
     <div class="box"><b>Logging</b><span>request id, latency, errors, tokens; never secrets or tracebacks to clients</span></div>
     <div class="box"><b>evals/</b><span>golden set → run_eval (own eval owners + eval.db) → results → EVAL.md</span></div>
     <div class="box"><b>tests/ + notebooks/</b><span>step-by-step notebooks, then pytest API tests (in-memory vector store, fake embedder, mocked LLM)</span></div>
