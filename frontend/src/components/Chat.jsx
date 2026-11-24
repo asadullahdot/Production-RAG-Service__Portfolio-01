@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api, json } from "../api.js";
 import { isSendKey, scopeIds, sumTokens } from "../lib.js";
 import Turn from "./Turn.jsx";
+import Logo from "./Logo.jsx";
+import { DESCRIPTION, TAGLINE } from "../brand.js";
 
 const MAX = 1000;  // the server's MAX_QUESTION_CHARS
 const EXAMPLES = ["Summarise this in five bullet points.", "What are the key dates and numbers?", "What risks or limitations are mentioned?"];
@@ -52,35 +54,35 @@ export default function Chat({ docs, loading, excluded, token }) {
 
       <div className="flex-1 space-y-5">
         {turns.length === 0 ? (
-          <div className="card text-center">
-            <p className="text-lg font-semibold">Ask anything about your documents</p>
-            <p className="muted mt-1">
-              {loading ? "Loading…" : noDocs ? "Upload a document first, then ask your question here." : "Answers come with numbered sources you can open and check."}
-            </p>
+          <div className="card px-5 py-8 text-center">
+            <Logo className="mx-auto mb-3 size-12" />
+            <p className="text-xl font-semibold">{TAGLINE}</p>
+            <p className="muted mx-auto mt-1 max-w-md text-base">{DESCRIPTION}</p>
+            {noDocs && <p className="muted mt-3">Upload a document to get started.</p>}
             {!loading && !noDocs && (
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
                 {EXAMPLES.map((ex) => (
-                  <button key={ex} type="button" className="btn-ghost" onClick={() => { setText(ex); box.current?.focus(); }}>{ex}</button>
+                  <button key={ex} type="button" className="chip" onClick={() => { setText(ex); box.current?.focus(); }}>{ex}</button>
                 ))}
               </div>
             )}
           </div>
         ) : (
-          turns.map((t, i) => <Turn key={t.id} turn={t} latest={i === turns.length - 1} />)
+          turns.map((t) => <Turn key={t.id} turn={t} />)
         )}
         <div ref={end} />
       </div>
 
-      <div className="sticky bottom-0 -mx-4 mt-4 bg-slate-50/90 px-4 pb-3 pt-2 backdrop-blur dark:bg-slate-950/90">
+      <div className="sticky bottom-0 -mx-4 mt-4 bg-linear-to-t from-slate-50 via-slate-50/90 to-transparent px-4 pb-3 pt-4 dark:from-slate-950 dark:via-slate-950/90">
         <form onSubmit={(e) => { e.preventDefault(); send(); }}
-          className="flex items-end gap-2 rounded-2xl border border-slate-300 bg-white p-2 shadow-sm focus-within:border-indigo-500 dark:border-slate-700 dark:bg-slate-900">
+          className="flex items-end gap-2 rounded-[1.75rem] border border-slate-200/70 bg-white p-1.5 pl-5 shadow-xl shadow-indigo-500/10 focus-within:border-indigo-400 dark:border-slate-700 dark:bg-slate-900">
           <label htmlFor="question" className="sr-only">Your question</label>
           <textarea
             id="question" ref={box} rows={1} maxLength={MAX} value={text} disabled={noDocs || noneSelected}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (isSendKey(e.nativeEvent)) { e.preventDefault(); send(); } }}
             placeholder={noDocs ? "Upload a document to start asking" : noneSelected ? "Tick at least one document" : "Ask about your documents"}
-            className="max-h-[200px] min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-base outline-none focus-visible:outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+            className="max-h-[200px] min-h-11 flex-1 resize-none bg-transparent px-0 py-2 text-base outline-none focus-visible:outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
           />
           <button type="submit" className="btn-primary shrink-0" disabled={!canSend} aria-label="Send question">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

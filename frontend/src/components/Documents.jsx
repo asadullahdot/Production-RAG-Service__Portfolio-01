@@ -48,7 +48,7 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); if (!uploading) upload([...e.dataTransfer.files]); }}
-        className={`mt-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors ${dragging ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950" : "border-slate-300 dark:border-slate-700"}`}
+        className={`mt-3 rounded-3xl border-2 border-dashed p-5 text-center transition-colors ${dragging ? "border-indigo-500 bg-indigo-100 dark:bg-indigo-950" : "border-indigo-300/60 bg-indigo-50/70 dark:border-indigo-400/30 dark:bg-indigo-950/30"}`}
       >
         <input ref={input} type="file" multiple className="sr-only" tabIndex={-1} accept={acceptAttribute(fileTypes)}
           onChange={(e) => upload([...e.target.files])} aria-label="Choose documents to upload" />
@@ -72,9 +72,9 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
       ) : (
         <>
           {docs.length > 1 && <p className="muted mt-4">Tick the documents a question should use.</p>}
-          <ul className="mt-2 divide-y divide-slate-200 dark:divide-slate-800">
+          <ul className="mt-3 space-y-2">
             {docs.map((d) => (
-              <li key={d.doc_id} className="flex items-start gap-2 py-3">
+              <li key={d.doc_id} className="flex items-start gap-2 rounded-2xl bg-indigo-50/50 px-3 py-2 dark:bg-slate-800/40">
                 <label className="-ml-2 flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
                   <input type="checkbox" className="size-5 accent-indigo-600" checked={!excluded.has(d.doc_id)} onChange={() => onToggle(d.doc_id)}
                     aria-label={`Use ${d.file_name} when answering`} />
@@ -83,7 +83,7 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
                   <p className="wrap-anywhere font-medium">{d.file_name}</p>
                   <p className="muted">{d.file_type.toUpperCase()} · {d.num_chunks} {d.num_chunks === 1 ? "chunk" : "chunks"} · {formatDate(d.uploaded_at)}</p>
                   {d.flagged && (
-                    <p className="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    <p className="mt-1 rounded-xl border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
                       This document contains instruction-like text. It is treated as data and never followed.
                     </p>
                   )}

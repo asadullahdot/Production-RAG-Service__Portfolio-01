@@ -1,4 +1,8 @@
-# Production RAG Service
+# KNOWLEX: AI-Powered Knowledge Assistant
+
+*“Your Knowledge. One Intelligent Conversation.”* Upload documents. Ask questions. Get evidence-backed answers with citations.
+
+KNOWLEX is the product name of this repository, the Portfolio 01 *Production RAG Service*.
 
 Upload documents (PDF, DOCX, PPTX, TXT, Markdown) and ask questions that are answered **only from those documents**, with numbered citations, a chunks panel (count + similarity scores) and explicit refusals when the answer is not in the documents.
 
@@ -17,7 +21,7 @@ Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-0
 - Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.
 - One error shape for every failure, `X-Request-ID` on every response, JSON logs with secret redaction, in-memory rate limit (429), bounded retries/timeouts/concurrency for every OpenAI call (upstream failure → 503).
 - **Login (B1, on by default):** sign up and log in on the first screen; passwords are stored as Argon2id hashes; login returns a signed JWT (HS256, 60 minutes); every document and question endpoint needs it; each user can only see, search and delete their own documents. `JWT_SECRET` (32+ random characters) is required: generate one with `python -c "import secrets; print(secrets.token_hex(32))"`. Set `AUTH_ENABLED=false` for a no-login demo where everyone shares one owner.
-- **React frontend (B4):** React + Vite + Tailwind, built into `app/static/` and served by FastAPI at `/` (the build is committed, so the app runs without Node). Chat-style asking (Enter sends, Shift+Enter makes a new line), drag-and-drop upload, tick which documents a question may use, clickable `[n]` citations that open the source chunks, plain-language refusals, delete with confirmation, light and dark theme, works from 360 px. All server text is rendered as React text, never as HTML. The earlier plain HTML/JS version is kept at the git tag `plain-frontend`.
+- **React frontend (B4):** React + Vite + Tailwind, built into `app/static/` and served by FastAPI at `/` (the build is committed, so the app runs without Node). Soft, rounded KNOWLEX design with a branded sign-in screen; chat-style asking (Enter sends, Shift+Enter makes a new line), drag-and-drop upload, tick which documents a question may use, clickable `[n]` citations that open the source chunks (Sources start closed, with a one-line preview), plain-language refusals, delete with confirmation, light and dark theme, works from 360 px. All server text is rendered as React text, never as HTML. The earlier plain HTML/JS version is kept at the git tag `plain-frontend`.
 
 ## Setup (Windows PowerShell)
 

@@ -4,6 +4,8 @@ import AuthForm from "./components/AuthForm.jsx";
 import Documents from "./components/Documents.jsx";
 import Chat from "./components/Chat.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
+import Logo from "./components/Logo.jsx";
+import { NAME, SUBTITLE } from "./brand.js";
 
 export default function App() {
   const [boot, setBoot] = useState({ loading: true, authEnabled: false, fileTypes: [], offline: false });
@@ -50,25 +52,26 @@ export default function App() {
 
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <h1 className="flex items-center gap-2 text-lg font-semibold">
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" />
-            </svg>
-            Document Q&amp;A
+      <div className="px-4 pt-3">
+        <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 rounded-3xl border border-slate-200/60 bg-white/80 px-3 py-2 shadow-xl shadow-indigo-500/10 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 sm:px-4">
+          <h1 className="flex min-w-0 items-center gap-3">
+            <Logo className="size-9 max-[359px]:hidden" />
+            <span className="min-w-0">
+              <span className="block truncate text-base font-bold leading-tight tracking-[0.1em] sm:text-lg sm:tracking-[0.14em]">{NAME}</span>
+              <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">{SUBTITLE}</span>
+            </span>
           </h1>
-          <div className="flex min-w-0 max-w-full items-center gap-2 sm:gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <ThemeToggle />
             {boot.authEnabled && session.token && (
               <>
-                <span className="muted min-w-0 max-w-[9rem] truncate sm:max-w-[16rem]" title={session.email}>{session.email}</span>
-                <button type="button" className="btn-ghost shrink-0" onClick={() => logout()}>Log out</button>
+                <span className="muted hidden max-w-[16rem] truncate sm:inline" title={session.email}>{session.email}</span>
+                <button type="button" className="btn-ghost" onClick={() => logout()}>Log out</button>
               </>
             )}
           </div>
-        </div>
-      </header>
+        </header>
+      </div>
 
       <main className="mx-auto max-w-6xl px-4 py-4">
         <div className="mb-3 space-y-2" aria-live="polite">
@@ -95,7 +98,7 @@ function Notice({ kind, onClose, children }) {
     info: "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200",
   }[kind];
   return (
-    <div role={kind === "error" ? "alert" : "status"} className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 ${style}`}>
+    <div role={kind === "error" ? "alert" : "status"} className={`flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 ${style}`}>
       <p className="min-w-0 wrap-anywhere">{children}</p>
       {onClose && <button type="button" onClick={onClose} aria-label="Dismiss message" className="-my-1 -mr-2 min-h-11 min-w-11 text-xl leading-none">×</button>}
     </div>
