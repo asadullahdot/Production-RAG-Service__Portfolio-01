@@ -226,3 +226,7 @@ __marimo__/
 data/
 evals/results/cache/
 .env
+
+# Frontend (B4)
+frontend/node_modules/
+frontend/dist/

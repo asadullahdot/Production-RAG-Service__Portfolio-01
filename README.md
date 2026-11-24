@@ -17,7 +17,7 @@ Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-0
 - Guardrails: upload (type/MIME/magic bytes, size, page and chunk caps, encrypted/corrupt, zip-bomb, macros), input (empty/too long → 422; English prompt-injection/jailbreak patterns → refused), output (invented citations stripped, system-prompt and API-key leak blocked), document instruction scan.
 - One error shape for every failure, `X-Request-ID` on every response, JSON logs with secret redaction, in-memory rate limit (429), bounded retries/timeouts/concurrency for every OpenAI call (upstream failure → 503).
 - **Login (B1, on by default):** sign up and log in on the first screen; passwords are stored as Argon2id hashes; login returns a signed JWT (HS256, 60 minutes); every document and question endpoint needs it; each user can only see, search and delete their own documents. `JWT_SECRET` (32+ random characters) is required: generate one with `python -c "import secrets; print(secrets.token_hex(32))"`. Set `AUTH_ENABLED=false` for a no-login demo where everyone shares one owner.
-- Responsive plain HTML/CSS/JS frontend (phone → desktop), all text rendered via `textContent`.
+- **React frontend (B4):** React + Vite + Tailwind, built into `app/static/` and served by FastAPI at `/` (the build is committed, so the app runs without Node). Chat-style asking (Enter sends, Shift+Enter makes a new line), drag-and-drop upload, tick which documents a question may use, clickable `[n]` citations that open the source chunks, plain-language refusals, delete with confirmation, light and dark theme, works from 360 px. All server text is rendered as React text, never as HTML. The earlier plain HTML/JS version is kept at the git tag `plain-frontend`.
 
 ## Setup (Windows PowerShell)
 
@@ -54,6 +54,10 @@ python -m evals.run_eval --config all
 
 Re-ingests the corpus per chunking config (A 1000/200, B 500/100) into an isolated Qdrant collection (`<name>_eval`) and a separate SQLite file, measures hit@k / recall@k / MRR, faithfulness, correctness, unanswerable handling, latency and tokens, tunes the similarity threshold on the dev split, reports the test split and picks the winner by the fixed rule. Outputs are cached in `evals/results/cache/`; results land in `evals/results/`.
 
+### Frontend (only needed to change the UI)
+
+Node 20+ is required. `cd frontend`, `npm install`, then `npm run dev` (UI on <http://localhost:5173/static/>, forwards API calls to a running `uvicorn app.main:app` on port 8000), `npm test` (unit tests), and `npm run build` (writes `app/static/`; commit the result).
+
 ### Notebooks
 
 `notebooks/01_extract … 05_answer` show each step. They use the real services when keys are present and otherwise run on offline test doubles with a clear banner. Regenerate with `python scripts/make_notebooks.py`.
@@ -79,8 +83,9 @@ All settings are environment variables read in `app/config.py` (names in `.env.e
 
 ```
 app/            main.py (routes only) · config · schemas · errors · db · auth · guardrails · retrieval · generation
-                llm_guard (the only model caller) · ratelimit · container · ingestion/ · static/
+                llm_guard (the only model caller) · ratelimit · container · ingestion/ · static/ (built UI)
 evals/          golden set, metrics, judge, cache, run_eval, guardrail cases
+frontend/       React source (B4); `npm run build` writes app/static/
 tests/          pytest suite (offline)         notebooks/  step-by-step notebooks
 scripts/        guardrail runner, notebook builder          corpus/  evaluation/demo documents (owner supplies)
 ```
