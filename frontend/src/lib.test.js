@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptAttribute, isSendKey, reasonText, scopeIds, sourcePreview, splitAnswer, sumTokens, unitLabel } from "./lib.js";
+import { acceptAttribute, isSendKey, reasonText, resolveTheme, scopeIds, sourcePreview, splitAnswer, sumTokens, unitLabel } from "./lib.js";
 
 describe("splitAnswer", () => {
   const cites = [{ n: 1 }, { n: 2 }];
@@ -66,4 +66,16 @@ describe("sourcePreview and sumTokens", () => {
   it("adds up input and output tokens and ignores failed turns", () => {
     expect(sumTokens([{ usage: { input_tokens: 600, output_tokens: 83 } }, undefined, { usage: { input_tokens: 10, output_tokens: 7 } }])).toBe(700);
   });
+});
+
+describe("resolveTheme", () => {
+  it("follows the system until the user has chosen", () => {
+    expect(resolveTheme(null, true)).toBe("dark");
+    expect(resolveTheme(null, false)).toBe("light");
+  });
+  it("a saved choice wins over the system", () => {
+    expect(resolveTheme("light", true)).toBe("light");
+    expect(resolveTheme("dark", false)).toBe("dark");
+  });
+  it("ignores a corrupt saved value", () => expect(resolveTheme("purple", true)).toBe("dark"));
 });

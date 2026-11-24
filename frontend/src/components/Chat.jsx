@@ -47,7 +47,7 @@ export default function Chat({ docs, loading, excluded, token }) {
   const scope = docs.length === 0 ? "" : !ids ? `Answers use all ${docs.length} document${docs.length === 1 ? "" : "s"}.` : `Answers use ${ids.length} of ${docs.length} documents.`;
 
   return (
-    <section aria-labelledby="ask-title" className="flex min-h-[60dvh] flex-col">
+    <section aria-labelledby="ask-title" className="flex min-h-[60dvh] min-w-0 flex-col">
       <h2 id="ask-title" className="sr-only">Ask a question</h2>
 
       <div className="flex-1 space-y-5">

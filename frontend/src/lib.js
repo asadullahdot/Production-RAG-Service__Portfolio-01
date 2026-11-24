@@ -62,6 +62,11 @@ export function sumTokens(results) {
   return results.reduce((sum, r) => sum + (r?.usage ? r.usage.input_tokens + r.usage.output_tokens : 0), 0);
 }
 
+// The theme to show: the user's saved choice if there is one, otherwise whatever the system uses.
+export function resolveTheme(stored, systemDark) {
+  return stored === "light" || stored === "dark" ? stored : systemDark ? "dark" : "light";
+}
+
 // Which documents to send with a question. Everything included (or nothing excluded) means "all", so send nothing.
 export function scopeIds(docs, excluded) {
   const included = docs.filter((d) => !excluded.has(d.doc_id)).map((d) => d.doc_id);

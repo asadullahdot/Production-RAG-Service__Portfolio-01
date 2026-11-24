@@ -41,7 +41,7 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
   }
 
   return (
-    <section className="card md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:overflow-y-auto" aria-labelledby="docs-title">
+    <section className="card min-w-0 md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:overflow-y-auto" aria-labelledby="docs-title">
       <h2 id="docs-title" className="text-base font-semibold">Documents</h2>
 
       <div
@@ -55,7 +55,7 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
         {uploading ? (
           <p role="status" className="flex items-center justify-center gap-2 py-1">
             <span className="size-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" aria-hidden="true" />
-            <span className="min-w-0 break-words">Reading and indexing <strong>{uploading}</strong>…</span>
+            <span className="min-w-0 wrap-anywhere">Reading and indexing <strong>{uploading}</strong>…</span>
           </p>
         ) : (
           <>
@@ -80,7 +80,7 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
                     aria-label={`Use ${d.file_name} when answering`} />
                 </label>
                 <div className="min-w-0 flex-1 pt-2">
-                  <p className="break-words font-medium">{d.file_name}</p>
+                  <p className="wrap-anywhere font-medium">{d.file_name}</p>
                   <p className="muted">{d.file_type.toUpperCase()} · {d.num_chunks} {d.num_chunks === 1 ? "chunk" : "chunks"} · {formatDate(d.uploaded_at)}</p>
                   {d.flagged && (
                     <p className="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">

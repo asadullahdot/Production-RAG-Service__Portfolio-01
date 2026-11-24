@@ -17,7 +17,7 @@ export default function Turn({ turn, latest }) {
 
   return (
     <div className="space-y-3">
-      <div className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-indigo-600 px-4 py-2 text-white dark:bg-indigo-500">
+      <div className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap wrap-anywhere rounded-2xl rounded-br-md bg-indigo-600 px-4 py-2 text-white dark:bg-indigo-500">
         {turn.question}
       </div>
 
@@ -44,7 +44,7 @@ export default function Turn({ turn, latest }) {
                 <strong>No answer.</strong> {reasonText(r.reason)}
               </p>
             )}
-            <p className="whitespace-pre-wrap break-words leading-relaxed">
+            <p className="whitespace-pre-wrap wrap-anywhere leading-relaxed">
               {splitAnswer(r.answer, r.citations).map((part, i) =>
                 part.type === "cite" ? (
                   <button key={i} type="button" onClick={() => showSource(part.n)} aria-label={`Show source ${part.n}`}
@@ -75,14 +75,14 @@ export default function Turn({ turn, latest }) {
                     return (
                       <li key={c.n} id={`chunk-${turn.id}-${c.n}`}
                         className={`rounded-xl border p-3 ${flash === c.n ? "flash" : ""} ${cited ? "border-indigo-300 dark:border-indigo-800" : "border-slate-200 dark:border-slate-800"}`}>
-                        <p className="muted flex flex-wrap items-center gap-x-2 break-words">
+                        <p className="muted flex flex-wrap items-center gap-x-2 wrap-anywhere">
                           <span className="inline-flex size-6 items-center justify-center rounded-md bg-slate-200 text-xs font-semibold text-slate-800 dark:bg-slate-800 dark:text-slate-100">{c.n}</span>
                           <span className="min-w-0 break-all">{c.file_name}</span>
                           <span>· {unitLabel(c.file_name)} {c.page}</span>
                           <span>· similarity {c.score.toFixed(3)}</span>
                           {cited && <span className="font-medium text-indigo-700 dark:text-indigo-300">· cited</span>}
                         </p>
-                        <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-sm">{c.text}</p>
+                        <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap wrap-anywhere text-sm">{c.text}</p>
                       </li>
                     );
                   })}

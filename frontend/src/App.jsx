@@ -3,6 +3,7 @@ import { api, loadSession, saveSession, setUnauthorizedHandler } from "./api.js"
 import AuthForm from "./components/AuthForm.jsx";
 import Documents from "./components/Documents.jsx";
 import Chat from "./components/Chat.jsx";
+import ThemeToggle from "./components/ThemeToggle.jsx";
 
 export default function App() {
   const [boot, setBoot] = useState({ loading: true, authEnabled: false, fileTypes: [], offline: false });
@@ -57,12 +58,15 @@ export default function App() {
             </svg>
             Document Q&amp;A
           </h1>
-          {boot.authEnabled && session.token && (
-            <div className="flex items-center gap-3">
-              <span className="muted max-w-[16rem] truncate" title={session.email}>{session.email}</span>
-              <button type="button" className="btn-ghost" onClick={() => logout()}>Log out</button>
-            </div>
-          )}
+          <div className="flex min-w-0 max-w-full items-center gap-2 sm:gap-3">
+            <ThemeToggle />
+            {boot.authEnabled && session.token && (
+              <>
+                <span className="muted min-w-0 max-w-[9rem] truncate sm:max-w-[16rem]" title={session.email}>{session.email}</span>
+                <button type="button" className="btn-ghost shrink-0" onClick={() => logout()}>Log out</button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -92,7 +96,7 @@ function Notice({ kind, onClose, children }) {
   }[kind];
   return (
     <div role={kind === "error" ? "alert" : "status"} className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 ${style}`}>
-      <p className="min-w-0 break-words">{children}</p>
+      <p className="min-w-0 wrap-anywhere">{children}</p>
       {onClose && <button type="button" onClick={onClose} aria-label="Dismiss message" className="-my-1 -mr-2 min-h-11 min-w-11 text-xl leading-none">×</button>}
     </div>
   );
@@ -120,7 +124,7 @@ function Workspace({ token, fileTypes, notify }) {
   const toggle = (id) => setExcluded((old) => { const s = new Set(old); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   return (
-    <div className="grid gap-4 md:grid-cols-[22rem_minmax(0,1fr)] md:items-start">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[22rem_minmax(0,1fr)] md:items-start">
       <Documents docs={docs} loading={loading} fileTypes={fileTypes} token={token} excluded={excluded} onToggle={toggle} onChanged={loadDocs} notify={notify} />
       <Chat docs={docs} loading={loading} excluded={excluded} token={token} />
     </div>
