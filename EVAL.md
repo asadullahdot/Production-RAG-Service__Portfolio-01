@@ -1,6 +1,6 @@
 # EVAL
 
-How the service was evaluated, what the numbers are, and what they do not show. Every number here comes from the runs saved in `evals/results/` (run on 24 Nov 2026, code at commit `7554879`, real OpenAI and Qdrant Cloud). Nothing is estimated unless it says "estimate".
+How the service was evaluated, what the numbers are, and what they do not show. Every number here comes from the runs saved in `evals/results/` (first run 24 Nov 2026; **re-run 25 Nov 2026 after the prompt change described in section 9**, which is what the tables below show; real OpenAI and Qdrant Cloud). Nothing is estimated unless it says "estimate".
 
 ## 1. Setup
 
@@ -27,13 +27,13 @@ The similarity threshold is tuned per config on dev (maximising balanced accurac
 | recall@5 | **0.944** | 0.806 |
 | MRR | **0.612** | 0.553 |
 | Faithfulness | 1.000 | 1.000 |
-| Correctness | 0.833 | 0.833 |
+| Correctness | 0.889 | 0.889 |
 | Unanswerable refused | 1.000 (7/7) | 1.000 (7/7) |
-| Over-refusal | 0.167 (3/18) | 0.167 (3/18) |
-| Generation latency p50 / p95 | 2.3 s / 4.7 s | 2.3 s / 2.5 s |
-| Tokens per question (screen + answer) | 1052 | 920 |
+| Over-refusal | 0.111 (2/18) | 0.111 (2/18) |
+| Generation latency p50 / p95 | 2.5 s / 2.8 s | 2.4 s / 2.7 s |
+| Tokens per question (screen + answer) | 1087 | 959 |
 
-**Winner by the fixed rule: Config A.** The rule: primary metric hit@k and MRR on test; a difference counts only if at least 2 questions change net. Hit@k differs by 2 questions (q18 and q19: A found them, B did not) and A wins MRR on 5 questions against 2, with 11 ties. The result is real but small: with 18 answerable test questions the confidence intervals overlap, and one question moves a rate by 0.056. On dev the two configs were level on hit@k (1.000 both).
+**Winner by the fixed rule: Config A.** The rule: primary metric hit@k and MRR on test; a difference counts only if at least 2 questions change net. Hit@k differs by 2 questions (q18 and q19: A found them, B did not) and A wins MRR on 5 questions against 2, with 11 ties. The result is real but small: with 18 answerable test questions the confidence intervals overlap, and one question moves a rate by 0.056. On dev the two configs were level on hit@k (1.000 both). Retrieval does not depend on the prompt, so hit@k, recall@k and MRR are identical to the first run; only the answer-side numbers moved (see section 9).
 
 **By document** (all 30 answerable questions, dev and test): hit@k A / B was 1.00 / 1.00 on the deck (13), the README (5) and the résumé (5), and **0.86 / 0.57** on the paper (7). All of B's loss is on the PDF.
 
@@ -47,8 +47,8 @@ What actually refuses near-miss questions is the model (prompt rule 4). To see t
 
 | Test split | A at 0.404 (tuned) | **A at 0.15** | B at 0.414 (tuned) | B at 0.15 |
 |---|---|---|---|---|
-| Correctness | 0.833 | **0.944** | 0.833 | 0.833 |
-| Over-refusal | 0.167 | **0.056** (1/18; CI 0.01-0.26) | 0.167 | 0.167 |
+| Correctness | 0.889 | **0.944** | 0.889 | 0.889 |
+| Over-refusal | 0.111 | **0.056** (1/18; CI 0.01-0.26) | 0.111 | 0.111 |
 | Unanswerable refused | 1.000 | 1.000 | 1.000 | 1.000 |
 
 All 7 unanswerable test questions were still refused at 0.15, so the higher threshold bought nothing here and cost answerable questions (A dev: q14 and q23 fell under 0.404 and were refused as `no_relevant_context`). **The shipped default is therefore 0.15**, as set during manual testing, and the rule-tuned value is reported only for transparency. The threshold still has one job: very low scores (off-topic questions scored 0.00-0.13) never reach the model, which saves a call. This conclusion rests on 25 test questions on one corpus.
@@ -59,7 +59,7 @@ All 7 unanswerable test questions were still refused at 0.15, so the higher thre
 |---|---|---|
 | Retrieval miss: incidental sentence | q20, both configs (test) | "On which GPU were the models trained?" The answer is one clause in a limitations paragraph; dense retrieval ranked other chunks higher (top score 0.39-0.45), so the chunk with the span was not in the top 5. Hybrid or keyword search would likely help |
 | Retrieval miss: chunk split | q18, q19, Config B only (test) | The evidence sentence is cut across a 500-character chunk boundary. The splitter breaks at line ends and builds overlap only from whole lines: on the PDF all 55 neighbouring pairs of A overlap but only 22 of 109 pairs of B do (20%). The same split lowered B's partial recall on q23 and q25 (0.50) |
-| Over-refusal by the model | q05 (both, test), q09 (both, dev), q11 (A, test), q41 (both, dev) | The right chunk was retrieved (top scores 0.44-0.55) but the model answered `NOT_IN_DOCUMENTS`. The two reworded questions used synonyms ("big-business clients", "AI model") for words in the text. The same cash-on-hand fact was answered correctly in a live run with different wording, so these refusals are sensitive to phrasing |
+| Over-refusal by the model | q09 (both, dev), q11 (A, test, tuned threshold only), q41 (both, dev); q05 (test) was refused in the first run and answered correctly in the re-run | The right chunk was retrieved (top scores 0.44-0.55) but the model answered `NOT_IN_DOCUMENTS`. The two reworded questions used synonyms ("big-business clients", "AI model") for words in the text. The same cash-on-hand fact was answered correctly in a live run with different wording, so these refusals are sensitive to phrasing, and with no `temperature` available the same question can flip between runs (q05 did, in both configs) |
 | Threshold refusal | q14, q23 (A, dev) | top score below 0.404 (0.34, 0.38), refused as `no_relevant_context`; fixed by the lower threshold |
 | Wrong answer | q10 (A, dev) | the evidence chunk was retrieved but the answer cited a neighbouring README sentence (the leak scanner) instead of "the API answers 422 and stores nothing"; correctness 0. Config B answered correctly |
 | Unsupported claim | none found | the judge scored every answered question faithful (1.000). See section 5: this is a ceiling, not proof, but the judge does catch invented claims when they are planted |
@@ -67,7 +67,7 @@ All 7 unanswerable test questions were still refused at 0.15, so the higher thre
 
 ## 5. Judge reliability
 
-The judge (`gpt-6.1-terra`) was compared with labels from Claude (an AI, **not** the owner or an independent human) on 44 answers: 28 real answers drawn by a stratified sample from the run (`scripts/judge_reliability.py --sample`) and 16 **control answers** written to be wrong or right by construction (`scripts/judge_controls.py`: a wrong number, a wrong entity, swapped values, an opposite answer, an invented extra claim, half of a two-part answer, and four correct paraphrases). Controls were needed because the system answers almost everything correctly: only 1 of the 28 real answers was wrong, which says little about whether the judge detects errors. Binarisation: judge correct = correctness 1.0; judge faithful = faithfulness 1.0.
+The judge (`gpt-6.1-terra`) was compared with labels from Claude (an AI, **not** the owner or an independent human) on 44 answers: 28 real answers drawn by a stratified sample from the first run (`scripts/judge_reliability.py --sample`; the sample was not redrawn after the re-run) and 16 **control answers** written to be wrong or right by construction (`scripts/judge_controls.py`: a wrong number, a wrong entity, swapped values, an opposite answer, an invented extra claim, half of a two-part answer, and four correct paraphrases). Controls were needed because the system answers almost everything correctly: only 1 of the 28 real answers was wrong, which says little about whether the judge detects errors. Binarisation: judge correct = correctness 1.0; judge faithful = faithfulness 1.0.
 
 | | n | Agreement (95% CI) | Cohen's kappa |
 |---|---|---|---|
@@ -81,6 +81,8 @@ The judge (`gpt-6.1-terra`) was compared with labels from Claude (an AI, **not**
 The target was at least 80% agreement; it was met. The judge flagged all 8 wrong-number, wrong-entity, swapped and opposite controls as wrong (correctness 0) and accepted all 4 correct paraphrases. Its only disagreements with the labels are 2 of 16 controls: for a correct answer with an invented extra detail, the judge gave correctness 0.5 (the label said correct, the judge penalised the invention). Half answers got 0.5 and counted as not fully correct, matching the labels.
 
 **Caveats.** The labeller is an AI and the judge is the same vendor family, so shared blind spots are possible; the controls are synthetic and easier than real subtle errors; derived arithmetic ("0.81 percentage points lower") was labelled faithful because it follows from the chunks, and a stricter reading would differ. A human re-label of the sample is the single most useful improvement.
+
+The 16 controls were run through the judge again on 25 Nov: every label matched the first run, and the combined agreement is still 95.5% (kappa 0.89 for correctness, 1.00 for faithfulness).
 
 ## 6. Limitations
 
@@ -110,3 +112,18 @@ python scripts/judge_reliability.py --score                     # agreement, kap
 ```
 
 Needs `OPENAI_API_KEY` and a Qdrant cluster in `.env`; the cache in `evals/results/cache/` makes a rerun cheap. Saved results: `evals/results/results_*.json`, `latest.json`, `judge_sample.json`, `judge_controls.json`, `judge_reliability.json`; labels: `evals/judge_labels.json`.
+
+## 9. What changed after the first run (bonus features B5 to B7)
+
+**The prompt changed, so the evaluation was re-run.** Edge-case testing (B7) found that prompt rule 6 ("never reveal any key or secret") made the model refuse to quote a password that was written in the user's own document (3 of 6 phrasings refused). Rule 6 now protects only this service's own secrets and says passwords and codes inside the context are ordinary content (0 of 9 refused afterwards). The evaluation cache key includes the prompt version, so the full run (`--config all`), the fixed-0.15 diagnostic and the 16 judge controls were repeated with the new prompt on 25 Nov 2026. Result: retrieval metrics and the winner (A, hit@k by 2 questions, MRR 5 to 2) are identical; faithfulness is 1.000 as before; correctness and over-refusal on test each moved by one question for both configs (0.833 to 0.889 and 0.167 to 0.111), because q05 was answered instead of refused. One question is inside the run-to-run noise of a model without `temperature`, so **this is not evidence that the new prompt is better**, only that it did not make these numbers worse. The prompt text in `DESIGN.md` is the new one.
+
+**Other measurements made after the main evaluation** (each is in PLAN.md section 16 with its method):
+
+| Feature | Measurement | Result |
+|---|---|---|
+| B6 document guardrails | 11 poisoned documents x 3 questions plus 7 clean documents, real stack (`scripts/run_poisoned_eval.py`) | before hardening 2 of 33 answers repeated the planted claim; after, **0 of 33**, all 33 still correct; scanner flagged 11 of 11 poisoned documents (in-sample: patterns written after seeing them) and 0 of 7 clean ones |
+| B6 held-out check | 6 unseen attack phrasings, 5 tricky benign sentences (scanner only) | 2 of 6 attacks flagged; 2 of 5 benign sentences wrongly flagged on first pass, 0 of 5 after two over-generic pattern parts were removed (no longer clean held-out). The scanner is a warning, not the protection |
+| B7 edge cases | 27 cases from the brief against the real services (`scripts/run_edge_cases.py`) | **27 of 27 passed**; upstream failures give 503 after 2 bounded retries in 1.4-4.1 s |
+| B5 file types | unit tests per type; the deck with speaker notes is part of the golden set (q39-q42) | PPTX, TXT and MD accepted; the notes gap was found and fixed during this evaluation |
+
+These are single runs on small fixtures, not repeated measurements.

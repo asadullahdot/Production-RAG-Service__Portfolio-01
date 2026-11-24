@@ -1,6 +1,6 @@
 # AI usage
 
-This file says which AI tools were used on this project, how, and who did what. It is kept up to date as the work proceeds (last updated 24 Nov 2026).
+This file says which AI tools were used on this project, how, and who did what. It is kept up to date as the work proceeds (last updated 25 Nov 2026).
 
 ## 1. Tools and models
 
@@ -21,7 +21,7 @@ No other AI assistant was used for the code. The task brief forbids no-code RAG 
 - Reviewed and merged the work (merge and push were done on the owner's instruction).
 
 **Claude Code (AI)**
-- Wrote the plan (PLAN.md), the application code, the offline test suite (215 tests at the last count), the evaluation harness, the notebooks, the scripts, the golden set and these documents.
+- Wrote the plan (PLAN.md), the application code, the offline test suite (285 tests at the last count), the evaluation harness, the notebooks, the scripts, the golden set and these documents.
 - Ran the checks that need real services (smoke test, live upload/ask/delete runs, guardrail measurements) and reported the numbers.
 - Reviewed its own code through repeated `/code-review` runs (seven rounds on 24 Nov 2026) and fixed what they found.
 
@@ -53,7 +53,16 @@ The owner's wording is paraphrased where the original was long. "Kept" means the
 | 24 Nov | Owner report: Qdrant client 1.15.1 is incompatible with server 1.20.2 | Claude Code | Client upgraded to 1.20.0; unused `langchain-qdrant` removed |
 | 24 Nov | Owner report: two sophisticated attack prompts reached retrieval; detect them before retrieval | Claude Code | New patterns for those shapes, plus a pre-retrieval model screen that runs in parallel with the embedding and can only block. Measured: 0 of 8 evasion attempts missed, 0 of 24 ordinary questions blocked. The screen's first version took 10-14 s per call and was **changed** to run without reasoning (about 2 s) |
 | 24 Nov | Merge it to main; push it to GitHub | Claude Code | Done after a secret scan of the tracked files |
-| 24 Nov | I added the corpus; create your own golden set; maintain DESIGN.md, EVAL.md and AI_USAGE.md | Claude Code | Golden set (38 questions) written and validated by `scripts/check_golden.py`; evaluation run; these three documents |
+| 24 Nov | I added the corpus; create your own golden set; maintain DESIGN.md, EVAL.md and AI_USAGE.md | Claude Code | Golden set written and validated by `scripts/check_golden.py` (38 questions at first, 42 after the speaker-note questions were added); evaluation run; these three documents. Corrections made along the way: two golden spans that Config B cut in half were relabelled, a PPTX extraction gap (speaker notes ignored) was fixed, and the dev-tuned threshold was reported as unreliable with a fixed-0.15 diagnostic added |
+
+| 24 Nov | Redact my resume | Claude Code | Name, contact details and file metadata removed from the DOCX before it went into `corpus/`. Kept |
+| 24 Nov | List the bonus features; one at a time: you build, I test, I confirm, you build the next | Claude Code | Workflow used for B5, B1, B6 and B7: one branch per feature, merged to `main` only after the owner wrote "confirmed". Order and scope in PLAN.md section 16 |
+| 24 Nov | B5 (more file types) | Claude Code | PPTX (with speaker notes and grouped shapes), TXT and MD, on by default; tests per type. Kept |
+| 24 Nov | B1 (login) | Claude Code | Argon2id, pinned-HS256 JWT, per-user isolation checked live with two users. A mandatory 32-character `JWT_SECRET` was generated into the git-ignored `.env`. Kept |
+| 24 Nov | B6 (document guardrails) | Claude Code | PDF active-content rejection, a scanner that flags text aimed at an AI, labelled context passages. Measured 0 of 33 answers obeyed a planted instruction (before: 2 of 33). A held-out check showed the scanner generalises poorly (2 of 6 unseen attacks), and the result is reported that way. **Changed** during testing: two over-generic scanner patterns were removed after they flagged benign sentences |
+| 24-25 Nov | B7 (edge cases) | Claude Code | 27 cases against the real services, all passing. The run found a real bug (prompt rule 6 refused to quote a password written in a user's document); the rule was reworded and the evaluation re-run (EVAL.md section 9). The runner itself crashed on Windows on its first run (a locked SQLite file) and was fixed. Merged after the owner's confirmation |
+| 25 Nov | Do not do the deployment yet | Claude Code | B8 (Hugging Face Spaces) was started and stopped on the owner's instruction; the two files created were deleted. It is not built |
+| 25 Nov | Do the evaluation wrap-up, then B4; install Node with winget, commit the build, keep it simple, consider the user experience | Claude Code | Evaluation re-run with the corrected prompt (EVAL.md and DESIGN.md updated); B4 React frontend started (see PLAN.md section 16 and DESIGN.md) |
 
 ## 5. Honest-use statement
 
