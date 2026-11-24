@@ -1,0 +1,118 @@
+{
+ "labeller": "Claude (an AI, not the project owner; labels read against the reference answers and the corpus text)",
+ "note": "A:q10 answers a different question (the leak scanner) than the reference (HTTP 422, nothing stored). Derived arithmetic (e.g. 0.81 percentage points, 2.50 percentage points) was labelled faithful because the numbers follow directly from figures in the chunks.",
+ "labels": {
+  "A:q10": {
+   "correct": false,
+   "faithful": true
+  },
+  "A:q40": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q15": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q04": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q25": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q04": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q06": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q15": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q08": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q02": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q26": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q13": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q19": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q03": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q07": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q07": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q22": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q14": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q12": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q10": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q25": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q11": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q02": {
+   "correct": true,
+   "faithful": true
+  },
+  "A:q26": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q17": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q08": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q42": {
+   "correct": true,
+   "faithful": true
+  },
+  "B:q19": {
+   "correct": true,
+   "faithful": true
+  }
+ }
+}

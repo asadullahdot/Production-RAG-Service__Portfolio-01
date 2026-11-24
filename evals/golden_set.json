@@ -1,0 +1,446 @@
+{
+  "description": "Golden set for the evaluation corpus in corpus/ (4 documents: PDF paper, DOCX redacted resume, PPTX business review (with speaker notes), Markdown README). Questions, evidence spans and reference answers were written by Claude from the document texts and checked by scripts/check_golden.py; the owner has not independently re-labelled them (stated in EVAL.md). Evidence spans are verbatim; no chunk ids.",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "What was Halvora's revenue in Q3 FY2026?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 2,
+      "evidence": "Executive summary $48.6M Q3 revenue, up 22% year over year 43.5% Gross margin, up from 41.8% in Q2",
+      "reference_answer": "$48.6M, up 22% year over year."
+    },
+    {
+      "id": "q02",
+      "question": "How much money did the company bring in during the third quarter of fiscal 2026?",
+      "type": "reworded",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 2,
+      "evidence": "Executive summary $48.6M Q3 revenue, up 22% year over year 43.5% Gross margin, up from 41.8% in Q2",
+      "reference_answer": "$48.6M in Q3 FY2026."
+    },
+    {
+      "id": "q03",
+      "question": "Which product line was the fastest-growing in Q3?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 4,
+      "evidence": "Atlas Software was the fastest-growing line. Wren Arm growth slowed after a delayed order from Fenwick Automotive.",
+      "reference_answer": "Atlas Software (fleet management), up 38%."
+    },
+    {
+      "id": "q04",
+      "question": "How many new enterprise customers did Halvora sign in Q3?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 2,
+      "evidence": "43.5% Gross margin, up from 41.8% in Q2 17 New enterprise customers signed in Q3",
+      "reference_answer": "17."
+    },
+    {
+      "id": "q05",
+      "question": "How many new big-business clients were won last quarter?",
+      "type": "reworded",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 2,
+      "evidence": "43.5% Gross margin, up from 41.8% in Q2 17 New enterprise customers signed in Q3",
+      "reference_answer": "17 new enterprise customers."
+    },
+    {
+      "id": "q06",
+      "question": "What is the annual churn rate?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 7,
+      "evidence": "Annual churn: 3.1% Total active customers: 412 Average deal size: $186,000",
+      "reference_answer": "3.1%."
+    },
+    {
+      "id": "q07",
+      "question": "Which region contributes the largest share of revenue?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 5,
+      "evidence": "North America remains the largest region North America 54% of revenue · strongest in warehousing",
+      "reference_answer": "North America, with 54% of revenue."
+    },
+    {
+      "id": "q08",
+      "question": "Does the PII scrubber use a machine-learning model to remove identifiers?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "README.md",
+      "source_page": 1,
+      "evidence": "regular expressions plus validators (Luhn, IBAN length, ISO country codes), running from specific to generic rules, so it needs no model",
+      "reference_answer": "No. It uses ordered regular expressions and validators, so it needs no model."
+    },
+    {
+      "id": "q09",
+      "question": "Is any AI model required to strip personal identifiers in this tool?",
+      "type": "reworded",
+      "answerable": true,
+      "source_doc": "README.md",
+      "source_page": 1,
+      "evidence": "regular expressions plus validators (Luhn, IBAN length, ISO country codes), running from specific to generic rules, so it needs no model",
+      "reference_answer": "No, the scrubber is rule-based (regular expressions plus validators) and needs no model."
+    },
+    {
+      "id": "q10",
+      "question": "What happens if the scrubbed text still looks like it contains an identifier?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "README.md",
+      "source_page": 1,
+      "evidence": "If the scrubbed text still looks like it holds an identifier, the API answers 422 and stores nothing.",
+      "reference_answer": "The API answers 422 and stores nothing."
+    },
+    {
+      "id": "q11",
+      "question": "Roughly how many tests does the scrubber project have?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "README.md",
+      "source_page": 1,
+      "evidence": "About 540 tests, no network or Groq key needed. The tests that use PostgreSQL skip when it is not running.",
+      "reference_answer": "About 540 tests."
+    },
+    {
+      "id": "q12",
+      "question": "How many years of experience does the candidate claim in SQA and DevOps?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Resume_redacted.docx",
+      "source_page": 2,
+      "evidence": "Result-driven SQA and DevOps Engineer with over 6 years of experience specializing in manual/automated software quality assurance",
+      "reference_answer": "Over 6 years."
+    },
+    {
+      "id": "q13",
+      "question": "For how long has he been working in software quality assurance?",
+      "type": "reworded",
+      "answerable": true,
+      "source_doc": "Resume_redacted.docx",
+      "source_page": 2,
+      "evidence": "Result-driven SQA and DevOps Engineer with over 6 years of experience specializing in manual/automated software quality assurance",
+      "reference_answer": "Over 6 years of experience in SQA and DevOps."
+    },
+    {
+      "id": "q14",
+      "question": "What application uptime is mentioned for the deployments monitored with AWS CloudWatch?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Resume_redacted.docx",
+      "source_page": 4,
+      "evidence": "performance diagnostic procedures across high-traffic deployments utilizing AWS CloudWatch to ensure 99.9% application uptime",
+      "reference_answer": "99.9% application uptime."
+    },
+    {
+      "id": "q15",
+      "question": "What is the tech stack of the Autonomous Customer Support Agent project?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Resume_redacted.docx",
+      "source_page": 5,
+      "evidence": "Tech Stack: n8n Advanced AI Nodes, Python (Flask API), OpenAI GPT models, Vector Embeddings, Postman, AWS Lambda.",
+      "reference_answer": "n8n Advanced AI Nodes, Python (Flask API), OpenAI GPT models, vector embeddings, Postman and AWS Lambda."
+    },
+    {
+      "id": "q16",
+      "question": "What classification accuracy did the Cropped Image CapsNet achieve compared with the Full Image CapsNet?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 1,
+      "evidence": "classification accuracy of 95.57%, compared to 93.07% for the Full Image CapsNet",
+      "reference_answer": "95.57% for the Cropped Image CapsNet versus 93.07% for the Full Image CapsNet."
+    },
+    {
+      "id": "q17",
+      "question": "How much more accurate was the CapsNet trained on cropped regions than the one trained on whole images?",
+      "type": "reworded",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 1,
+      "evidence": "classification accuracy of 95.57%, compared to 93.07% for the Full Image CapsNet",
+      "reference_answer": "About 2.5 percentage points: 95.57% versus 93.07%."
+    },
+    {
+      "id": "q18",
+      "question": "What early-stopping patience was used when training the CapsNet?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 4,
+      "evidence": "Early stopping is employed with a patience parameter of 5 epochs, applied to both fullresolution and cropped image inputs.",
+      "reference_answer": "A patience of 5 epochs."
+    },
+    {
+      "id": "q19",
+      "question": "What detection accuracy did the proposed three-stage pipeline reach, and how does it compare with standalone YOLOv11?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 1,
+      "evidence": "Despite improved precision, the three-stage pipeline shows slightly lower overall detection accuracy (89.98%) than standalone YOLOv11 (90.79%)",
+      "reference_answer": "89.98%, slightly lower than the 90.79% of standalone YOLOv11."
+    },
+    {
+      "id": "q20",
+      "question": "On which GPU were the models trained?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 8,
+      "evidence": "even when using a NVIDIA GeForce RTX 3070 GPU with 24 GB VRAM",
+      "reference_answer": "An NVIDIA GeForce RTX 3070 GPU with 24 GB VRAM."
+    },
+    {
+      "id": "q21",
+      "question": "What is the Q4 FY26 revenue guidance and what is the FY2027 revenue target?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 3,
+      "evidence": [
+        "Recurring revenue now 31% of total Q4 FY26 guidance: $51M to $53M",
+        "Revenue of $230M, up from an expected $193M in FY2026"
+      ],
+      "reference_answer": "Q4 FY26 guidance is $51M to $53M; the FY2027 target is $230M."
+    },
+    {
+      "id": "q22",
+      "question": "Which supplier provides all the lithium cells, and how many production staff has the Tartu plant hired so far?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 8,
+      "evidence": [
+        "All lithium cells come from one supplier, Voltaris, in Chile.",
+        "The Tartu plant needs 60 production staff before opening; 22 are hired so far."
+      ],
+      "reference_answer": "Voltaris in Chile supplies all lithium cells; 22 of the 60 needed production staff are hired."
+    },
+    {
+      "id": "q23",
+      "question": "Which university did the candidate attend, and which employer does he currently work for?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "Resume_redacted.docx",
+      "source_page": 6,
+      "evidence": [
+        "BS in Computer Science (BSCS) – Virtual University of Pakistan (2018 – 2021)",
+        "Senior SQA & DevOps Engineer | Eemaan Limited | Karachi, Pakistan | 12/2020 – Present"
+      ],
+      "reference_answer": "Virtual University of Pakistan (BSCS); he currently works at Eemaan Limited."
+    },
+    {
+      "id": "q24",
+      "question": "What accuracy and precision did the Cropped Image CapsNet reach, and for how many epochs did it train?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 5,
+      "evidence": [
+        "Accuracy 93.07% 95.57% Precision 92.36% 96.42% Recall 94.00% 94.67% F1-Score 93.17% 95.53%",
+        "The Cropped Image CapsNet, on the other hand, only trained for 29 epochs (20 h total training time)"
+      ],
+      "reference_answer": "Accuracy 95.57% and precision 96.42%; it trained for 29 epochs (about 20 hours)."
+    },
+    {
+      "id": "q25",
+      "question": "Which two datasets were combined, and how many images does the combined dataset contain?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "Test-Data-Kaggle-001.pdf",
+      "source_page": 1,
+      "evidence": [
+        "The approach is evaluated on a combined LIDC-IDRI and Lung-PET-CT-Dx dataset.",
+        "a combined dataset of 53,688 CT and PET/CT images, after manual preprocessing, which is used for training"
+      ],
+      "reference_answer": "LIDC-IDRI and Lung-PET-CT-Dx; the combined dataset has 53,688 CT and PET/CT images."
+    },
+    {
+      "id": "q26",
+      "question": "Which Python version does the scrubber need, and how is the PostgreSQL database started?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "README.md",
+      "source_page": 1,
+      "evidence": [
+        "Python 3.11+ (developed on 3.14), Docker Desktop (for PostgreSQL), a free Groq API key from console.groq.com.",
+        "docker compose up -d # PostgreSQL 16 in container \"pii-postgres\", port 5432"
+      ],
+      "reference_answer": "Python 3.11 or newer; the database is started with docker compose up -d (PostgreSQL 16)."
+    },
+    {
+      "id": "q27",
+      "question": "What was Halvora's revenue in Q4 FY2025?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q28",
+      "question": "Who is the chief executive officer of Halvora Robotics?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q29",
+      "question": "What is the list price of the original Kestrel robot?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q30",
+      "question": "How many roles does Halvora plan to add in FY2028?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q31",
+      "question": "Which Groq model does the scrubber call for its analysis?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q32",
+      "question": "Which open-source license is the PII scrubber released under?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q33",
+      "question": "What is the candidate's current monthly salary?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q34",
+      "question": "Which AWS certifications does the candidate hold?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q35",
+      "question": "What accuracy did the model reach on the LUNA16 benchmark?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q36",
+      "question": "Which organisation funded the lung nodule research?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q37",
+      "question": "What is the capital of Australia?",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q38",
+      "question": "Give me a recipe for chocolate cake.",
+      "type": "unanswerable",
+      "answerable": false,
+      "source_doc": null,
+      "source_page": null,
+      "evidence": null,
+      "reference_answer": null
+    },
+    {
+      "id": "q39",
+      "question": "Where is Halvora headquartered?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 1,
+      "evidence": "The company is headquartered in Tallinn, Estonia, and was founded in 2017 by Jonas Virk and Mira Okonkwo.",
+      "reference_answer": "Tallinn, Estonia."
+    },
+    {
+      "id": "q40",
+      "question": "In which city is the head office of the robotics company?",
+      "type": "reworded",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 1,
+      "evidence": "The company is headquartered in Tallinn, Estonia, and was founded in 2017 by Jonas Virk and Mira Okonkwo.",
+      "reference_answer": "Tallinn, Estonia."
+    },
+    {
+      "id": "q41",
+      "question": "How much cash did Halvora have at the end of the quarter?",
+      "type": "single",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 2,
+      "evidence": "budget is scheduled for November 3, 2026. Cash on hand at quarter end was $61.3M.",
+      "reference_answer": "$61.3M."
+    },
+    {
+      "id": "q42",
+      "question": "Which second battery supplier is being qualified, and when is the qualification due to finish?",
+      "type": "multi_part",
+      "answerable": true,
+      "source_doc": "Halvora_Q3_FY2026_Review.pptx",
+      "source_page": 8,
+      "evidence": [
+        "Mitigation for battery supply: a second supplier, Norlith (Norway), is in qualification.",
+        "Qualification is due to finish in January 2027."
+      ],
+      "reference_answer": "Norlith (Norway); qualification is due to finish in January 2027."
+    }
+  ]
+}

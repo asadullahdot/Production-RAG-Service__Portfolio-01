@@ -1,0 +1,182 @@
+{
+ "labeller": "Claude (labels fixed by construction)",
+ "judge_model": "gpt-6.1-terra",
+ "rows": [
+  {
+   "id": "c01",
+   "question_id": "q01",
+   "kind": "wrong number",
+   "answer": "Halvora's Q3 FY2026 revenue was $54.8M, up 22% year over year. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.5,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c02",
+   "question_id": "q06",
+   "kind": "wrong number",
+   "answer": "The annual churn rate is 1.3%. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c03",
+   "question_id": "q07",
+   "kind": "wrong entity",
+   "answer": "EMEA contributes the largest share of revenue, with 54%. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c04",
+   "question_id": "q03",
+   "kind": "wrong entity",
+   "answer": "Kestrel AMR was the fastest-growing product line in Q3. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c05",
+   "question_id": "q16",
+   "kind": "swapped values",
+   "answer": "The Full Image CapsNet reached 95.57% accuracy, higher than the Cropped Image CapsNet's 93.07%. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c06",
+   "question_id": "q18",
+   "kind": "wrong number",
+   "answer": "A patience of 50 epochs was used for early stopping. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c07",
+   "question_id": "q14",
+   "kind": "wrong number",
+   "answer": "The deployments reached 99.99% application uptime. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c08",
+   "question_id": "q08",
+   "kind": "opposite answer",
+   "answer": "Yes, a machine-learning model is required to remove the identifiers. [1]",
+   "human_correct": false,
+   "human_faithful": false,
+   "judge_correctness": 0.0,
+   "judge_faithfulness": 0.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c09",
+   "question_id": "q39",
+   "kind": "invented extra claim",
+   "answer": "Halvora is headquartered in Tallinn, Estonia, and has a second head office in Berlin. [1]",
+   "human_correct": true,
+   "human_faithful": false,
+   "judge_correctness": 0.5,
+   "judge_faithfulness": 0.5,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c10",
+   "question_id": "q12",
+   "kind": "invented extra claim",
+   "answer": "Over 6 years, including 3 years as a team lead. [1]",
+   "human_correct": true,
+   "human_faithful": false,
+   "judge_correctness": 0.5,
+   "judge_faithfulness": 0.5,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c11",
+   "question_id": "q22",
+   "kind": "half of a two-part answer",
+   "answer": "Voltaris in Chile provides all the lithium cells. [1]",
+   "human_correct": false,
+   "human_faithful": true,
+   "judge_correctness": 0.5,
+   "judge_faithfulness": 1.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c12",
+   "question_id": "q42",
+   "kind": "half of a two-part answer",
+   "answer": "Norlith (Norway) is being qualified as a second battery supplier. [1]",
+   "human_correct": false,
+   "human_faithful": true,
+   "judge_correctness": 0.5,
+   "judge_faithfulness": 1.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c13",
+   "question_id": "q01",
+   "kind": "correct paraphrase",
+   "answer": "Revenue for the quarter came to $48.6M, up 22% on the same quarter a year earlier. [1]",
+   "human_correct": true,
+   "human_faithful": true,
+   "judge_correctness": 1.0,
+   "judge_faithfulness": 1.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c14",
+   "question_id": "q07",
+   "kind": "correct paraphrase",
+   "answer": "North America is the largest region, accounting for 54% of revenue. [1]",
+   "human_correct": true,
+   "human_faithful": true,
+   "judge_correctness": 1.0,
+   "judge_faithfulness": 1.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c15",
+   "question_id": "q16",
+   "kind": "correct paraphrase",
+   "answer": "The cropped-image model scored 95.57% accuracy against 93.07% for the full-image model. [1]",
+   "human_correct": true,
+   "human_faithful": true,
+   "judge_correctness": 1.0,
+   "judge_faithfulness": 1.0,
+   "judge_parse_error": false
+  },
+  {
+   "id": "c16",
+   "question_id": "q10",
+   "kind": "correct paraphrase",
+   "answer": "The API responds with a 422 error and stores nothing. [1]",
+   "human_correct": true,
+   "human_faithful": true,
+   "judge_correctness": 1.0,
+   "judge_faithfulness": 1.0,
+   "judge_parse_error": false
+  }
+ ]
+}

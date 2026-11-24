@@ -1,0 +1,88 @@
+{
+ "labeller": "Claude (an AI, not the project owner; labels read against the reference answers and the corpus text)",
+ "natural_sample": {
+  "correctness": {
+   "n": 28,
+   "both_pass": 27,
+   "both_fail": 1,
+   "judge_pass_human_fail": 0,
+   "judge_fail_human_pass": 0,
+   "agreement": 1.0,
+   "agreement_ci95": [
+    0.879,
+    1.0
+   ],
+   "cohen_kappa": 1.0
+  },
+  "faithfulness": {
+   "n": 28,
+   "both_pass": 28,
+   "both_fail": 0,
+   "judge_pass_human_fail": 0,
+   "judge_fail_human_pass": 0,
+   "agreement": 1.0,
+   "agreement_ci95": [
+    0.879,
+    1.0
+   ],
+   "cohen_kappa": 1.0
+  }
+ },
+ "controls": {
+  "labeller": "Claude (labels fixed by construction)",
+  "correctness": {
+   "n": 16,
+   "both_pass": 4,
+   "both_fail": 10,
+   "judge_pass_human_fail": 0,
+   "judge_fail_human_pass": 2,
+   "agreement": 0.875,
+   "agreement_ci95": [
+    0.64,
+    0.965
+   ],
+   "cohen_kappa": 0.7142857142857143
+  },
+  "faithfulness": {
+   "n": 16,
+   "both_pass": 6,
+   "both_fail": 10,
+   "judge_pass_human_fail": 0,
+   "judge_fail_human_pass": 0,
+   "agreement": 1.0,
+   "agreement_ci95": [
+    0.806,
+    1.0
+   ],
+   "cohen_kappa": 1.0
+  }
+ },
+ "combined": {
+  "correctness": {
+   "n": 44,
+   "both_pass": 31,
+   "both_fail": 11,
+   "judge_pass_human_fail": 0,
+   "judge_fail_human_pass": 2,
+   "agreement": 0.9545454545454546,
+   "agreement_ci95": [
+    0.849,
+    0.987
+   ],
+   "cohen_kappa": 0.8857142857142858
+  },
+  "faithfulness": {
+   "n": 44,
+   "both_pass": 34,
+   "both_fail": 10,
+   "judge_pass_human_fail": 0,
+   "judge_fail_human_pass": 0,
+   "agreement": 1.0,
+   "agreement_ci95": [
+    0.92,
+    1.0
+   ],
+   "cohen_kappa": 1.0
+  }
+ }
+}

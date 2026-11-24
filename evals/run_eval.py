@@ -58,6 +58,7 @@ def chunks_in_prompt(question: str, raw_chunks, settings: Settings):
 
 
 async def evaluate_config(name: str, questions: list[dict], corpus_files: list[Path], settings: Settings, *,
+                          fixed_threshold: float | None = None,
                           inner_openai, store: VectorStore, cache: DiskCache, work_dir: Path,
                           use_judge: bool = True) -> dict:
     size, overlap = CONFIGS[name]
@@ -95,6 +96,8 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
     # ---- threshold tuned on dev
     dev = [(r["top_score"], r["answerable"]) for r in rows if r["split"] == "dev"]
     threshold, curve = metrics.tune_threshold(dev) if dev else (settings.similarity_threshold, [])
+    if fixed_threshold is not None:  # diagnostic only: skips the dev tuning so chunk size can be compared at one threshold
+        threshold = fixed_threshold
     tuned = container.settings.model_copy(update={"similarity_threshold": threshold})
     container.ask.s = tuned
 
@@ -204,19 +207,23 @@ async def main_async(args) -> int:
     configs = {}
     for name in names:
         configs[name] = await evaluate_config(name, questions, corpus_files, settings, inner_openai=inner, store=store,
-                                              cache=cache, work_dir=work_dir)
+                                              cache=cache, work_dir=work_dir, fixed_threshold=args.fixed_threshold)
         configs[name]["summary_test"] = summarise(configs[name], "test")
         configs[name]["summary_dev"] = summarise(configs[name], "dev")
     results = {"date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "git_commit": git_commit(),
                "models": {"llm": settings.llm_model, "judge": settings.judge_model, "embedding": settings.embedding_model},
                "seed": 7, "n_questions": len(questions), "cache": {"hits": cache.hits, "misses": cache.misses},
                "configs": configs}
+    if args.fixed_threshold is not None:
+        results["diagnostic"] = {"fixed_threshold": args.fixed_threshold, "note": "not the winner-rule result: the threshold was not tuned on dev"}
     if len(configs) == 2:
         results["comparison"] = pick_winner(configs["A"], configs["B"])
     RESULTS_DIR.mkdir(exist_ok=True)
-    out = RESULTS_DIR / f"results_{dt.datetime.now():%Y%m%d_%H%M%S}.json"
+    tag = f"fixed_{args.fixed_threshold}_" if args.fixed_threshold is not None else ""
+    out = RESULTS_DIR / f"results_{tag}{dt.datetime.now():%Y%m%d_%H%M%S}.json"
     out.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    (RESULTS_DIR / "latest.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
+    if args.fixed_threshold is None:  # a diagnostic run never replaces the real result
+        (RESULTS_DIR / "latest.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print_summary(results)
     print(f"\nSaved {out.relative_to(ROOT)}")
     if args.deepeval:
@@ -229,6 +236,9 @@ def main() -> None:
     p.add_argument("--config", default="all", choices=["all", "A", "B", "a", "b"])
     p.add_argument("--golden", default=str(Path(__file__).parent / "golden_set.json"))
     p.add_argument("--corpus", default=str(ROOT / "corpus"))
+    p.add_argument("--fixed-threshold", type=float, default=None,
+                   help="DIAGNOSTIC: use this similarity threshold for every config instead of tuning it on dev. "
+                        "Results go to results_fixed_<value>_*.json and are not the winner-rule result")
     p.add_argument("--deepeval", action="store_true", help="optional DeepEval cross-check (not required)")
     sys.exit(asyncio.run(main_async(p.parse_args())))
 
