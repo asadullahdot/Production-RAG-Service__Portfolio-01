@@ -9,6 +9,6 @@ export default defineConfig({
   base: "/static/",
   plugins: [react(), tailwindcss()],
   build: { outDir: "../app/static", emptyOutDir: true },
-  server: { proxy: { "/documents": api, "/ask": api, "/auth": api, "/health": api } },
+  server: { proxy: { "/documents": api, "/ask": api, "/auth": api, "/health": api, "/metrics": api } },
   test: { environment: "node" },
 });

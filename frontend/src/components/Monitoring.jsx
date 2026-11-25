@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { formatCost, formatCount, formatMs, formatPercent } from "../lib.js";
 import { SeriesChart, StepBars } from "./Charts.jsx";
@@ -26,6 +26,14 @@ export default function Monitoring({ token, initialTrace, onGoChat }) {
   const [traceId, setTraceId] = useState(initialTrace?.id || null);
 
   useEffect(() => { if (initialTrace) setTraceId(initialTrace.id); }, [initialTrace]);
+
+  // The trace sits below the cards and charts: bring it into view and move focus to it when one is opened.
+  const traceRef = useRef(null);
+  useEffect(() => {
+    if (!traceId || !traceRef.current) return;
+    traceRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    traceRef.current.focus({ preventScroll: true });
+  }, [traceId, initialTrace]);
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +84,9 @@ export default function Monitoring({ token, initialTrace, onGoChat }) {
         {error && <p role="alert" className="mt-3 text-red-700 dark:text-red-300">{error}</p>}
       </section>
 
+      {/* the trace sits right under the header, so nothing that loads later can push it out of view */}
+      {traceId && <TraceView sectionRef={traceRef} token={token} requestId={traceId} onClose={() => setTraceId(null)} />}
+
       {!summary && !error && <p className="muted py-8 text-center">Loading…</p>}
 
       {empty && (
@@ -125,7 +136,6 @@ export default function Monitoring({ token, initialTrace, onGoChat }) {
         </>
       )}
 
-      {traceId && <TraceView token={token} requestId={traceId} onClose={() => setTraceId(null)} />}
 
       {requests.length > 0 && (
         <section className="card" aria-labelledby="recent-title">
