@@ -145,6 +145,9 @@ class Database:
     def add_trace(self, row: dict, spans: list[dict]) -> None:
         cols = self._REQUEST_COLUMNS
         with self._lock:
+            existing = self._conn.execute("SELECT owner_id FROM requests WHERE request_id=?", (row["request_id"],)).fetchone()
+            if existing is not None and existing["owner_id"] != row.get("owner_id"):
+                return  # a client-chosen X-Request-ID that belongs to someone else's trace: keep theirs
             self._conn.execute("DELETE FROM spans WHERE request_id=?", (row["request_id"],))  # a client may reuse a request id
             self._conn.execute(f"INSERT OR REPLACE INTO requests ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
                                tuple(row.get(c) for c in cols))

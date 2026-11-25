@@ -36,9 +36,9 @@ def main(args) -> int:
     print(f"Requests         {r['total']}  (by route: {r['by_route']})")
     print(f"Error rate       {r['error_rate']:.1%}  ({r['server_errors']} server errors; {r['rate_limited']} rate-limited, {r['client_errors']} bad requests)" if r["total"] else "Error rate       -")
     print(f"Questions        {q['count']}  answered {q['answered']}, refused {q['refused']} {q['refusal_reasons']}")
-    print(f"Latency          p50 {ms(lat['p50'])}, p95 {ms(lat['p95'])}, mean {ms(lat['mean'])}, max {ms(lat['max'])}  (over {lat['count']} answered questions)")
+    print(f"Latency          p50 {ms(lat['p50'])}, p95 {ms(lat['p95'])}, mean {ms(lat['mean'])}, max {ms(lat['max'])}  (over {lat['count']} questions served: answered or refused)")
     print(f"Tokens           {t['input']:,} in, {t['output']:,} out, about {t['embedding_estimated']:,} embedding (estimated); {t['per_question']} per question")
-    print(f"Cost (estimate)  ${cost['total_usd']:.6f} in total, ${cost['per_question_usd']:.6f} per answered question" if cost["per_question_usd"] is not None else "Cost (estimate)  -")
+    print(f"Cost (estimate)  ${cost['total_usd']:.6f} in total, ${cost['per_question_usd']:.6f} per question served" if cost["per_question_usd"] is not None else "Cost (estimate)  -")
     for route in ("ask", "upload"):
         if s["steps"][route]:
             print(f"\nSteps of {route} requests (p50 / p95 / count):")

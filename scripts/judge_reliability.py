@@ -97,7 +97,9 @@ def main() -> int:
     if args.score:
         labels_doc = json.loads(LABELS.read_text(encoding="utf-8"))
         labels = labels_doc["labels"]
-        by_key = {it["key"]: it for it in items}
+        sample_file = RESULTS / "judge_sample.json"  # the labelled answers; a later run of the evaluation changes the text in latest.json
+        source = json.loads(sample_file.read_text(encoding="utf-8"))["items"] if sample_file.exists() else items
+        by_key = {it["key"]: it for it in source}
         corr, faith = [], []
         for key, lab in labels.items():
             it = by_key.get(key)

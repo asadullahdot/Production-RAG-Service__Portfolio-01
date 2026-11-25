@@ -67,7 +67,8 @@ class LLMGuard:
     # ------------------------------------------------------------------ model construction
     def _require_key(self) -> None:
         if not self.s.openai_api_key:
-            raise UpstreamUnavailable("OpenAI is not configured (missing OPENAI_API_KEY).")
+            log_event(logger, "OpenAI is not configured (missing OPENAI_API_KEY)", logging.ERROR)  # the client only gets the generic 503
+            raise UpstreamUnavailable()
 
     def _openai_chat(self, model: str, effort: str, max_tokens: int):
         from langchain_openai import ChatOpenAI

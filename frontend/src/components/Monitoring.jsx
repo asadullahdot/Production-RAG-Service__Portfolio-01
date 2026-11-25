@@ -103,12 +103,12 @@ export default function Monitoring({ token, initialTrace, onGoChat }) {
             <Stat label="Questions" value={formatCount(q.count)} note={`${q.answered} answered · ${q.refused} refused`} />
             <Stat label="Error rate" value={formatPercent(summary.requests.error_rate)}
               note={`${summary.requests.server_errors} of ${summary.requests.total} requests failed`} />
-            <Stat label="Latency p50 / p95" value={`${formatMs(q.latency_ms.p50)} / ${formatMs(q.latency_ms.p95)}`} note={`${q.latency_ms.count} answered questions`} />
+            <Stat label="Latency p50 / p95" value={`${formatMs(q.latency_ms.p50)} / ${formatMs(q.latency_ms.p95)}`} note={`${q.latency_ms.count} questions served`} />
             <Stat label="Refusal rate" value={formatPercent(q.refusal_rate)}
               note={Object.entries(q.refusal_reasons).map(([k, v]) => `${k} ${v}`).join(" · ") || "no refusals"} />
             <Stat label="Tokens per question" value={formatCount(summary.tokens.per_question)}
               note={`${formatCount(summary.tokens.input)} in · ${formatCount(summary.tokens.output)} out in total`} />
-            <Stat label="Cost per question (estimate)" value={formatCost(summary.cost.per_question_usd)} note={`${formatCost(summary.cost.total_usd)} in total · per answered question`} />
+            <Stat label="Cost per question (estimate)" value={formatCost(summary.cost.per_question_usd)} note={`${formatCost(summary.cost.total_usd)} in total · per question served`} />
             <Stat label="Requests" value={formatCount(summary.requests.total)}
               note={Object.entries(summary.requests.by_route).map(([k, v]) => `${k} ${v}`).join(" · ")} />
             <Stat label="Rejected" value={formatCount(summary.requests.rate_limited + summary.requests.client_errors)}

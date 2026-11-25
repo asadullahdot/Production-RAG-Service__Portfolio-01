@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import re
+import struct
 import unicodedata
 import zipfile
 import zlib
@@ -78,7 +79,7 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
         infos = zf.infolist()
-    except zipfile.BadZipFile as exc:
+    except (zipfile.BadZipFile, ValueError, OSError, struct.error) as exc:
         raise CorruptFile() from exc
     names = {i.filename for i in infos}
     if "[Content_Types].xml" not in names or _ZIP_REQUIRED[file_type] not in names:
@@ -101,7 +102,7 @@ def _check_zip(file_type: str, data: bytes, settings: Settings) -> None:
                         raise MaliciousFile("The archive is too large when decompressed.")
     except RuntimeError as exc:  # an encrypted member: "password required"
         raise EncryptedFile() from exc
-    except (zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error, EOFError, NotImplementedError) as exc:
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error, EOFError, NotImplementedError, ValueError, OSError, struct.error) as exc:
         raise CorruptFile() from exc
 
 
