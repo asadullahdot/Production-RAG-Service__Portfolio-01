@@ -21,7 +21,7 @@ No other AI assistant was used for the code. The task brief forbids no-code RAG 
 - Reviewed and merged the work (merge and push were done on the owner's instruction).
 
 **Claude Code (AI)**
-- Wrote the plan (PLAN.md), the application code, the offline test suite (285 tests at the last count), the evaluation harness, the notebooks, the scripts, the golden set and these documents.
+- Wrote the plan (PLAN.md), the application code, the offline test suite (304 tests at the last count), the evaluation harness, the notebooks, the scripts, the golden set and these documents.
 - Ran the checks that need real services (smoke test, live upload/ask/delete runs, guardrail measurements) and reported the numbers.
 - Reviewed its own code through repeated `/code-review` runs (seven rounds on 24 Nov 2026) and fixed what they found.
 

@@ -8,7 +8,7 @@ Upload documents (PDF, DOCX, PPTX, TXT, Markdown) and ask questions that are ans
 
 FastAPI · OpenAI (`gpt-6-luna` answers, `text-embedding-3-small` embeddings, `gpt-6.1-terra` as evaluation judge) · Qdrant (one collection, owner-filtered) · SQLite (document registry, users) · LangChain for the model wrappers (`ChatOpenAI`, `OpenAIEmbeddings`), `Document` and the text splitter. The pipeline itself is plain async Python (no chains, no LangGraph).
 
-> **Status:** MVP implemented and covered by an offline test suite. Real-service numbers (evaluation results, screenshots, demo video link) are added after running with API keys; none are claimed here until measured. The full design lives in [PLAN.md](PLAN.md); the layer-by-layer picture is [architecture.html](architecture.html).
+> **Status (25 Nov 2026):** all mandatory parts and the optional features B1 (login), B3 (monitoring), B4 (React frontend), B5 (file types), B6 (document guardrails) and B7 (edge cases) are implemented and covered by 304 offline tests and 23 frontend tests. B2 (multilingual) was not attempted and B8 (deployment) is not built. Measured results are in [EVAL.md](EVAL.md) (on the test split: hit@5 0.944 for the winning chunking, 1000/200, against 0.833 for 500/100; faithfulness 1.000; 7 of 7 unanswerable questions refused), the design and its trade-offs in [DESIGN.md](DESIGN.md), the AI usage in [AI_USAGE.md](AI_USAGE.md), and the full plan in [PLAN.md](PLAN.md); the layer-by-layer picture is [architecture.html](architecture.html). Swagger screenshots and the demo video link are added by the owner at submission.
 
 Links: repo <https://github.com/asadullahdot/Production-RAG-Service__Portfolio-01> · demo video: _to be added_ · deployed URL: _optional (B8), to be added_
 
@@ -80,6 +80,7 @@ Node 20+ is required. `cd frontend`, `npm install`, then `npm run dev` (UI on <h
 | `DELETE /documents/{doc_id}` | delete document and its vectors | 204 · 404 · 503 |
 | `POST /ask` | answer a question (refusals are 200) | 200 · 404 · 422 · 429 · 503 |
 | `GET /health` | liveness + dependencies, `auth_enabled` | 200 · 503 |
+| `GET /metrics/summary`, `GET /metrics/requests`, `GET /metrics/requests/{request_id}` | B3: your latency p50/p95, error rate, tokens, estimated cost, and the trace of a request | 200 · 401 · 404 · 422 |
 | `POST /auth/signup`, `POST /auth/login`, `GET /auth/me` | B1 (login form for Swagger's Authorize button; `me` checks the token) | 201/200 · 401 · 403 · 409 · 422 · 429 |
 
 Errors: `{"error": {"code", "message", "request_id", "details"?}}`. Full contract: [PLAN.md §7](PLAN.md).
@@ -96,12 +97,12 @@ app/            main.py (routes only) · config · schemas · errors · db · au
 evals/          golden set, metrics, judge, cache, run_eval, guardrail cases
 frontend/       React source (B4); `npm run build` writes app/static/
 tests/          pytest suite (offline)         notebooks/  step-by-step notebooks
-scripts/        guardrail runner, notebook builder          corpus/  evaluation/demo documents (owner supplies)
+scripts/        edge-case, guardrail, poisoned-document, monitoring and notebook scripts          corpus/  evaluation corpus and test fixtures
 ```
 
 ## Git workflow
 
-`main` is the stable branch; work is done on feature branches (`feature/ingestion`, `feature/ask-endpoint`, `feature/guardrails`, `feature/evals`, `feature/frontend`, plus one per optional feature) and merged when complete. `.env` is never committed.
+`main` is the stable branch. The MVP (ingestion, ask, guardrails, plain frontend, tests) was built directly on `main` in the first commits. The evaluation and every later feature were built on their own branch and merged with a merge commit: `feature/langchain-qdrant`, `feature/evals`, `feature/auth` (B1), `feature/file-types` (B5), `feature/doc-guardrails` (B6), `feature/edge-cases` (B7), `feature/react-frontend` (B4) and `feature/observability` (B3), plus small `fix/*` and `chore/*` branches for review fixes. The tags `pre-langchain` and `plain-frontend` mark rollback points. `.env` is never committed.
 
 ## Known limitations
 

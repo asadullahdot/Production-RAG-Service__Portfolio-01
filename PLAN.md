@@ -1,7 +1,7 @@
 # PLAN.md — Production RAG Service (single master plan)
 
 > **Who this is for:** an AI coding model or engineer who will build the project. This is the **only** plan document. Rewritten 24 Nov 2026 to be shorter and simpler; the previous long version is kept in `_archive/PLAN_before_rewrite_2026-11-24.md` (not committed).
-> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 122 offline tests pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
+> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 304 offline tests at the last count (25 Nov 2026) pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
 > **Brief and rubric:** `_requirements/`. **Diagram:** [architecture.html](architecture.html) (PLAN.md wins on any conflict).
 > **Deadline:** Wednesday 25 Nov 2026. Measured evaluation numbers are mandatory (rubric M7 = 0 gives grade F).
 
@@ -194,7 +194,7 @@ Run: `uvicorn app.main:app`. Evals call the services directly with internal owne
 | Group | Variables (defaults) | Notes |
 |---|---|---|
 | Secrets | `OPENAI_API_KEY`, `QDRANT_API_KEY`, `JWT_SECRET` | never logged. `JWT_SECRET` ≥ 32 random chars, checked at startup when auth is on |
-| Mode | `INPUT_SCREEN` (true), `INPUT_RECHECK` (true), `SCREEN_REASONING_EFFORT` (none: a yes/no classifier needs no reasoning, ~2 s instead of 10-14 s at `low`, measured 24 Nov 2026), `AUTH_ENABLED` (false), `DEFAULT_OWNER_ID` (local), `ENV` (dev \| production), `BEHIND_PROXY` (false) | production forbids `DEMO_FAULT` and hides stack details; `BEHIND_PROXY` reads `X-Forwarded-For` for the limiter |
+| Mode | `INPUT_SCREEN` (true), `INPUT_RECHECK` (true), `SCREEN_REASONING_EFFORT` (none: a yes/no classifier needs no reasoning, ~2 s instead of 10-14 s at `low`, measured 24 Nov 2026), `AUTH_ENABLED` (true since B1 was built), `DEFAULT_OWNER_ID` (local), `ENV` (dev \| production), `BEHIND_PROXY` (false) | production forbids `DEMO_FAULT` and hides stack details; `BEHIND_PROXY` reads `X-Forwarded-For` for the limiter |
 | Signup | `SIGNUP_ENABLED` (true), `MAX_USERS` (50) | protects the owner's credit on a public deploy (403 `signup_closed`) |
 | Models | `LLM_MODEL` gpt-6-luna, `JUDGE_MODEL` gpt-6.1-terra, `EMBEDDING_MODEL` text-embedding-3-small, `EMBEDDING_DIM` 1536 | |
 | Generation | `LLM_REASONING_EFFORT` (low), `LLM_MAX_OUTPUT_TOKENS` (4000), `JUDGE_REASONING_EFFORT` (medium) | reasoning tokens count toward the cap; if a response is `incomplete`, retry once with double the cap, then 503. **`temperature` is NOT supported: both models return HTTP 400 "Unsupported parameter: 'temperature'" [VERIFIED 24 Nov: live call]. Never send it; there is no temperature setting.** Determinism comes from fixed reasoning effort plus the disk cache |
@@ -423,7 +423,7 @@ Save the pytest log (summary and counts) for README and DESIGN.
 | M10 | §7.3 | API tests per code |
 | M11 | §13 | executed notebooks + pytest log |
 | M12 | §6, §8.3, §11 | review |
-| M13 | public repo; stable `main`; feature branches (`feature/ingestion`, `feature/ask-endpoint`, `feature/guardrails`, `feature/evals`, `feature/frontend`, plus one per optional feature built); meaningful commits; `.env` ignored; secret scan before push | git log |
+| M13 | public repo; stable `main`; feature branches (the MVP was built on `main`; then `feature/langchain-qdrant`, `feature/evals`, `feature/auth`, `feature/file-types`, `feature/doc-guardrails`, `feature/edge-cases`, `feature/react-frontend`, `feature/observability`, plus `fix/*` and `chore/*` branches); meaningful commits; `.env` ignored; secret scan before push | git log |
 | M14 | README, pinned requirements, `.env.example`, Swagger screenshots, AI_USAGE | doc review |
 | M15 | §18 | video |
 | B1, B4, B5, B6, B7, B8 | §16 | tests + demo |

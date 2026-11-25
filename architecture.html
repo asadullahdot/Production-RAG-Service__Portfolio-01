@@ -45,7 +45,7 @@
 
   <!-- ASK -->
   <section class="flow on" id="ask">
-    <div class="layer l1"><h3>1 · Frontend (responsive HTML/CSS/JS)</h3><small>app/static · login only if /health says auth_enabled <span class="opt">B1</span> · React build <span class="opt">B4</span> · Monitoring tab and per-answer Trace link <span class="opt">B3</span> · all text rendered with textContent (no HTML injection)</small>
+    <div class="layer l1"><h3>1 · Frontend (React, responsive)</h3><small>app/static · login only if /health says auth_enabled <span class="opt">B1</span> · React build <span class="opt">B4</span> · Monitoring tab and per-answer Trace link <span class="opt">B3</span> · all server text rendered as React text (no HTML injection)</small>
       <div class="row"><div class="box"><b>Question box</b><span>POST /ask {question, top_k?, doc_ids?}</span></div>
       <div class="box"><b>Answer + citations</b><span>[n] markers linked to chunks</span></div>
       <div class="box"><b>Chunks panel</b><span>chunk text, count, similarity score (collapsible)</span></div></div></div>
@@ -99,8 +99,8 @@
       <div class="box"><b>Embed</b><span>batched, concurrent under a semaphore, via llm_guard.py</span></div></div></div>
     <div class="arrow">vectors + metadata</div>
     <div class="layer l5"><h3>5 · Storage</h3><small>Qdrant (vectors + chunk text, one collection filtered by owner) · SQLite (documents registry; users with B1)</small>
-      <div class="row"><div class="box"><b>1. Upsert</b><span>id {doc_id}:{chunk_idx}; metadata doc_id, owner_id, file_name, page, chunk_idx, text…</span></div>
-      <div class="box"><b>2. Wait for visibility</b><span>poll fetch of the last id (eventual consistency)</span></div>
+      <div class="row"><div class="box"><b>1. Upsert</b><span>point id uuid5({doc_id}:{chunk_idx}); metadata doc_id, owner_id, file_name, page, chunk_idx, text…</span></div>
+      <div class="box"><b>2. wait=True</b><span>the upsert returns only when the points are searchable (no polling)</span></div>
       <div class="box"><b>3. Registry row (last)</b><span>a document exists only once its vectors are stored</span></div>
       <div class="box"><b>On failure</b><span>delete computed chunk ids → <span class="err">503</span></span></div></div></div>
     <div class="arrow">201 {doc_id, file_name, num_chunks, num_pages, …}</div>

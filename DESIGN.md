@@ -100,7 +100,7 @@ Context is sent as `[n] (file_name, page X) chunk text` inside `<context>`. File
 
 ## 7. API
 
-`POST /documents` (201, 400, 401, 409, 413, 415, 422, 429, 503), `GET /documents`, `DELETE /documents/{doc_id}` (204, 404), `POST /ask` (200, 401, 404, 422, 429, 503), `GET /health`, `GET /`; with the optional auth, `POST /auth/signup` and `POST /auth/login` (OAuth2 form). 413 is an extra beyond the brief's list. Every error has one shape, `{"error": {"code", "message", "request_id", "details"?}}`, including FastAPI's 422, and every response carries `X-Request-ID`. Swagger at `/docs` has descriptions and examples on each route. Full contract: PLAN.md §7.
+`POST /documents` (201, 400, 401, 409, 413, 415, 422, 429, 503), `GET /documents`, `DELETE /documents/{doc_id}` (204, 404), `POST /ask` (200, 401, 404, 422, 429, 503), `GET /health`, `GET /`, `GET /auth/me`, and the B3 monitoring endpoints `GET /metrics/summary`, `GET /metrics/requests`, `GET /metrics/requests/{request_id}` (section 14); with the optional auth, `POST /auth/signup` and `POST /auth/login` (OAuth2 form). 413 is an extra beyond the brief's list. Every error has one shape, `{"error": {"code", "message", "request_id", "details"?}}`, including FastAPI's 422, and every response carries `X-Request-ID`. Swagger at `/docs` has descriptions and examples on each route. Full contract: PLAN.md §7.
 
 ## 8. Resilience
 
@@ -108,7 +108,7 @@ All model calls go through `llm_guard.py`: LangChain models built with `max_retr
 
 ## 9. Testing
 
-Offline, about 20 s: **285 tests** at the last run. Embeddings are a deterministic hashed bag-of-words (similar words give similar vectors), the chat model is scripted, and Qdrant runs in its embedded in-memory mode, so the whole API runs without network. Coverage: every route and status code, upload/list/ask/delete/re-ask, every guardrail pattern and the false-positive cases, retry/deadline/`Retry-After`/quota behaviour, concurrent identical uploads (one document stored), stale vectors never surfacing, size limits while streaming, and a regression test for each defect found in the seven code-review rounds and in manual testing. The notebooks (`notebooks/01`-`05`) were executed against the real services. These tests cannot judge answer quality; the evaluation does.
+Offline, about 40 s: **304 tests** at the last run. Embeddings are a deterministic hashed bag-of-words (similar words give similar vectors), the chat model is scripted, and Qdrant runs in its embedded in-memory mode, so the whole API runs without network. Coverage: every route and status code, upload/list/ask/delete/re-ask, every guardrail pattern and the false-positive cases, retry/deadline/`Retry-After`/quota behaviour, concurrent identical uploads (one document stored), stale vectors never surfacing, size limits while streaming, and a regression test for each defect found in the seven code-review rounds and in manual testing. The notebooks (`notebooks/01`-`05`) were executed against the real services. These tests cannot judge answer quality; the evaluation does.
 
 ## 10. Data privacy
 
