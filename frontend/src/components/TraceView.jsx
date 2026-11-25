@@ -13,7 +13,7 @@ export function StatusBadge({ status }) {
 }
 
 // The steps of one request as a waterfall: each bar starts when the step started and lasts as long as the step took.
-export default function TraceView({ token, requestId, onClose }) {
+export default function TraceView({ token, requestId, onClose, sectionRef }) {
   const [trace, setTrace] = useState(null);
   const [error, setError] = useState("");
 
@@ -31,7 +31,7 @@ export default function TraceView({ token, requestId, onClose }) {
   const geo = trace ? waterfallGeometry(trace.spans, total) : [];
 
   return (
-    <section className="card" aria-labelledby="trace-title">
+    <section ref={sectionRef} tabIndex={-1} className="card scroll-mt-4 outline-none" aria-labelledby="trace-title">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id="trace-title" className="text-base font-semibold">Trace</h3>
