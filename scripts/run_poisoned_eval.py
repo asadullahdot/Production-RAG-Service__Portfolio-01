@@ -86,7 +86,8 @@ async def main_async(repeats: int) -> int:
     if not FIXTURES.exists():
         subprocess.run([sys.executable, str(ROOT / "scripts" / "make_poisoned_fixtures.py")], check=True)
     manifest = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
-    settings = get_settings().model_copy(update={"sqlite_path": str(ROOT / "data" / "b6.db")})
+    settings = get_settings().model_copy(update={"sqlite_path": str(ROOT / "data" / "b6.db"), "max_docs_per_user": 0,
+                                                 "max_chunks_per_user": 0, "daily_token_limit_per_user": 0})
     for suffix in ("", "-wal", "-shm"):
         Path(settings.sqlite_path + suffix).unlink(missing_ok=True)
     store = QdrantStore(settings, collection=f"{settings.qdrant_collection}_eval")

@@ -66,7 +66,8 @@ async def evaluate_config(name: str, questions: list[dict], corpus_files: list[P
     db_path = work_dir / f"eval_{name}.db"
     for suffix in ("", "-wal", "-shm"):
         Path(str(db_path) + suffix).unlink(missing_ok=True)
-    cfg_settings = settings.model_copy(update={"sqlite_path": str(db_path), "chunk_size": size, "chunk_overlap": overlap})
+    cfg_settings = settings.model_copy(update={"sqlite_path": str(db_path), "chunk_size": size, "chunk_overlap": overlap,
+                                           "max_docs_per_user": 0, "max_chunks_per_user": 0, "daily_token_limit_per_user": 0})  # limits are not what is measured
     cached = CachedOpenAI(inner_openai, cfg_settings, cache, config_id=name)
     container = build_container(cfg_settings, store=store, openai_client=cached, db=Database(str(db_path)))
     ingestion = IngestionService(cfg_settings, container.db, store, cached,

@@ -113,6 +113,14 @@ class Settings(BaseSettings):
     demo_fault: str = "none"  # none | llm_timeout | llm_429 | embed_timeout | embed_429 | vector_db_down (demo only)
     request_deadline_s: float = 60.0
 
+    # Per-user limits. They protect the owner's OpenAI and Qdrant credit on a public deployment, where anyone can sign up.
+    # A value of 0 switches that limit off. Environment names: MAX_DOCS_PER_USER, MAX_CHUNKS_PER_USER, DAILY_TOKEN_LIMIT_PER_USER.
+    max_docs_per_user: int = Field(default=10, ge=0)        # documents one user may keep stored at the same time
+    max_chunks_per_user: int = Field(default=5000, ge=0)    # chunks (= embedded vectors in Qdrant) one user may keep stored
+    # Model tokens (input + output of the screen, recheck and answer calls) one user may spend per UTC day. Embedding tokens are not
+    # counted: the embedding wrapper does not report them and they cost very little.
+    daily_token_limit_per_user: int = Field(default=100_000, ge=0)
+
     # monitoring (B3). Prices are USD per 1M tokens from the OpenAI model pages (checked 25 Nov 2026): used only for cost ESTIMATES.
     telemetry_enabled: bool = True
     trace_keep: int = Field(default=5000, ge=100)  # newest traced requests kept in SQLite

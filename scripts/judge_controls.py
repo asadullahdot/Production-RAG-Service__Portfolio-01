@@ -55,7 +55,8 @@ CONTROLS = [
 async def main() -> int:
     golden = {q["id"]: q for q in json.loads((ROOT / "evals" / "golden_set.json").read_text(encoding="utf-8"))["questions"]}
     settings = get_settings().model_copy(update={"chunk_size": 1000, "chunk_overlap": 200, "similarity_threshold": 0.15,
-                                                 "sqlite_path": str(ROOT / "data" / "judge_ctl.db")})
+                                                 "sqlite_path": str(ROOT / "data" / "judge_ctl.db"),
+                                                 "max_docs_per_user": 0, "max_chunks_per_user": 0, "daily_token_limit_per_user": 0})
     for suffix in ("", "-wal", "-shm"):
         Path(settings.sqlite_path + suffix).unlink(missing_ok=True)
     store = QdrantStore(settings, collection=f"{settings.qdrant_collection}_eval")

@@ -137,3 +137,17 @@ export function spanDetail(attrs = {}) {
   if (attrs["error.type"]) parts.push(`error: ${attrs["error.type"]}`);
   return parts.join(" · ");
 }
+
+// ---- per-user limits (a limit of 0 means no limit) ----------------------------------------------------------------
+export const isFull = (l) => !!l && l.limit > 0 && l.used >= l.limit;
+
+export function limitText(l) {
+  if (!l) return "";
+  return l.limit > 0 ? `${l.used.toLocaleString()} of ${l.limit.toLocaleString()}` : l.used.toLocaleString();
+}
+
+export function formatResetTime(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "00:00 UTC" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+

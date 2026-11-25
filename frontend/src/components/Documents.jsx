@@ -1,13 +1,16 @@
 import { useRef, useState } from "react";
 import { api } from "../api.js";
-import { acceptAttribute, formatDate, typeList } from "../lib.js";
+import { acceptAttribute, formatDate, isFull, limitText, typeList } from "../lib.js";
 
-export default function Documents({ docs, loading, fileTypes, token, excluded, onToggle, onChanged, notify }) {
+export default function Documents({ usage, docs, loading, fileTypes, token, excluded, onToggle, onChanged, notify }) {
   const input = useRef(null);
   const [uploading, setUploading] = useState("");  // name of the file being indexed
   const [dragging, setDragging] = useState(false);
   const [confirming, setConfirming] = useState(null);  // doc_id waiting for "Yes, delete"
   const [deleting, setDeleting] = useState(null);
+  // True when the document limit is reached: the upload controls are disabled and say why. The server refuses the upload as well
+  // (403 quota_exceeded), so this is only a courtesy and an unknown limit (usage not loaded yet) never blocks anything.
+  const full = isFull(usage?.documents);
 
   async function upload(files) {
     for (const file of files) {  // one at a time: indexing is the slow part and the server limits concurrency anyway
@@ -43,11 +46,12 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
   return (
     <section className="card min-w-0 md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:overflow-y-auto" aria-labelledby="docs-title">
       <h2 id="docs-title" className="text-base font-semibold">Documents</h2>
+      {usage && <p className="muted">{limitText(usage.documents)} documents · {limitText(usage.chunks)} chunks</p>}
 
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); if (!uploading) upload([...e.dataTransfer.files]); }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); if (!uploading && !full) upload([...e.dataTransfer.files]); }}
         className={`mt-3 rounded-3xl border-2 border-dashed p-5 text-center transition-colors ${dragging ? "border-indigo-500 bg-indigo-100 dark:bg-indigo-950" : "border-indigo-300/60 bg-indigo-50/70 dark:border-indigo-400/30 dark:bg-indigo-950/30"}`}
       >
         <input ref={input} type="file" multiple className="sr-only" tabIndex={-1} accept={acceptAttribute(fileTypes)}
@@ -59,8 +63,12 @@ export default function Documents({ docs, loading, fileTypes, token, excluded, o
           </p>
         ) : (
           <>
-            <button type="button" className="btn-primary" onClick={() => input.current?.click()}>Choose files</button>
-            <p className="muted mt-2">or drop them here{fileTypes.length > 0 && <> · {typeList(fileTypes)}</>}</p>
+            <button type="button" className="btn-primary" disabled={full} onClick={() => input.current?.click()}>Choose files</button>
+            {full ? (
+              <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">Document limit reached. Delete one to upload another.</p>
+            ) : (
+              <p className="muted mt-2">or drop them here{fileTypes.length > 0 && <> · {typeList(fileTypes)}</>}</p>
+            )}
           </>
         )}
       </div>

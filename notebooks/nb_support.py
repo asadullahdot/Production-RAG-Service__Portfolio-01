@@ -59,7 +59,8 @@ def services():
     settings = Settings(_env_file=ROOT / ".env")  # the kernel runs in notebooks/, so give the .env path explicitly
     # Notebooks keep their own registry file and Qdrant collection, never the live ones.
     settings = settings.model_copy(update={"sqlite_path": str(ROOT / "data" / "notebooks.db"),
-                                           "qdrant_collection": settings.qdrant_collection + "_nb"})
+                                           "qdrant_collection": settings.qdrant_collection + "_nb",
+                                           "max_docs_per_user": 0, "max_chunks_per_user": 0, "daily_token_limit_per_user": 0})
     if settings.openai_api_key and (settings.qdrant_url or settings.qdrant_path):
         ct = build_container(settings)
         arun(ct.store.ensure_collection())

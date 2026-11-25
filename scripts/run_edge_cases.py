@@ -42,7 +42,8 @@ def collection_name() -> str:
 def start_server(port: int, extra: dict | None = None) -> subprocess.Popen:
     env = os.environ.copy()
     env.update({"AUTH_ENABLED": "false", "SQLITE_PATH": str(ROOT / "data" / "edge_cases.db"), "QDRANT_COLLECTION": collection_name(),
-                "RATE_LIMIT_PER_MIN": "1000", "PYTHONIOENCODING": "utf-8"})
+                "RATE_LIMIT_PER_MIN": "1000", "PYTHONIOENCODING": "utf-8",
+                "MAX_DOCS_PER_USER": "0", "MAX_CHUNKS_PER_USER": "0", "DAILY_TOKEN_LIMIT_PER_USER": "0"})  # the cases are about files, not limits
     env.update(extra or {})
     log = open(ROOT / "data" / f"edge_cases_server_{port}.log", "w", encoding="utf-8")
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port)], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)

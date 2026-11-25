@@ -71,6 +71,18 @@ class RateLimited(AppError):
     status_code, code, default_message = 429, "rate_limited", "Too many requests. Please slow down."
 
 
+class QuotaExceeded(AppError):
+    """A per-user storage limit (documents or chunks) is reached. 403: retrying does not help until the user deletes something.
+    ``details`` = {"kind": "documents" | "chunks", "limit": ..., "used": ...}."""
+    status_code, code, default_message = 403, "quota_exceeded", "You have reached a limit on your account."
+
+
+class TokenQuotaExceeded(AppError):
+    """The user's daily model-token allowance is used up. 429 with a Retry-After header: it works again after 00:00 UTC.
+    ``details`` = {"kind": "tokens", "limit", "used", "resets_at" (ISO time), "retry_after_s"}."""
+    status_code, code, default_message = 429, "token_quota_exceeded", "You have used today's token allowance."
+
+
 class UpstreamUnavailable(AppError):
     status_code, code = 503, "upstream_unavailable"
     default_message = "A required upstream service is unavailable. Please try again shortly."

@@ -18,7 +18,7 @@ from app import guardrails
 from app import telemetry as tel
 from app.config import Settings
 from app.db import Database, now_iso
-from app.errors import AppError, DuplicateDocument, FileTooLarge, NoText, NotFound, UpstreamUnavailable
+from app.errors import AppError, DuplicateDocument, FileTooLarge, NoText, NotFound, QuotaExceeded, UpstreamUnavailable
 from app.ingestion.chunking import chunk_sections
 from app.ingestion.embedding import Embedder, embed_texts
 from app.ingestion.extraction import extract
@@ -75,6 +75,14 @@ class IngestionService:
         if existing:
             raise DuplicateDocument(details={"doc_id": existing["doc_id"]})
 
+        # Per-user storage limits, checked early so that nothing is extracted or paid for when the upload cannot be kept. This comes
+        # after the duplicate check on purpose: re-uploading a file you already have is a 409, not a limit error. add_document checks
+        # the same limits again under a lock, which is what stops two simultaneous uploads from both getting in.
+        used_docs, used_chunks = await run_in_threadpool(self.db.usage_counts, owner_id)
+        if self.s.max_docs_per_user and used_docs >= self.s.max_docs_per_user:
+            raise QuotaExceeded(f"You have reached the limit of {self.s.max_docs_per_user} document{'' if self.s.max_docs_per_user == 1 else 's'}. Delete one to upload another.",
+                                {"kind": "documents", "limit": self.s.max_docs_per_user, "used": used_docs})
+
         with tel.span("extract", file_type=file_type):
             extracted = await run_in_threadpool(extract, data, file_type, self.s.max_pages)
             tel.annotate(pages=extracted.num_pages, chars=extracted.total_chars)
@@ -96,6 +104,11 @@ class IngestionService:
             tel.annotate(chunks=len(drafts))
         if not drafts:
             raise NoText()
+        # The chunk limit needs the chunk count, so it is checked here: after chunking, before the (paid) embedding calls.
+        if self.s.max_chunks_per_user and used_chunks + len(drafts) > self.s.max_chunks_per_user:
+            raise QuotaExceeded(f"This document has {len(drafts):,} chunks and would take you over your limit of {self.s.max_chunks_per_user:,} "
+                                f"({used_chunks:,} used). Delete a document first.",
+                                {"kind": "chunks", "limit": self.s.max_chunks_per_user, "used": used_chunks})
         if len(drafts) > self.s.max_chunks_per_doc:
             raise FileTooLarge(f"The document produces {len(drafts)} chunks (max {self.s.max_chunks_per_doc}).")
 
@@ -121,7 +134,8 @@ class IngestionService:
                         lambda: self.db.add_document(
                             doc_id=doc_id, owner_id=owner_id, file_name=filename, file_type=file_type,
                             num_pages=extracted.num_pages, num_chunks=len(drafts), file_hash=file_hash,
-                            uploaded_at=uploaded_at, flagged=flagged))  # the same timestamp as the vector payload
+                            uploaded_at=uploaded_at, flagged=flagged, max_docs=self.s.max_docs_per_user,
+                            max_chunks=self.s.max_chunks_per_user))  # the same timestamp as the vector payload
             except sqlite3.IntegrityError as exc:  # lost a race on the unique (owner, hash) index
                 other = await run_in_threadpool(self.db.find_by_hash, owner_id, file_hash)
                 raise DuplicateDocument(details={"doc_id": other["doc_id"] if other else None}) from exc
