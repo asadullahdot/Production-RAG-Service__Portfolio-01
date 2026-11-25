@@ -46,7 +46,7 @@ HARD_JAILBREAK_PATTERNS = [
     r"pretend\s+(that\s+)?you\s+(are|have)\s+no\s+(rules|restrictions|limits|guidelines)",
     r"(act|behave|respond)\s+as\s+(if\s+)?(you\s+(are|were)\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered)",
     r"you\s+are\s+no\s+longer\s+bound",
-    r"roleplay\s+as\s+.*(no\s+rules|evil|unrestricted)",
+    r"roleplay\s+as\s+[^.]{0,80}(no\s+rules|evil|unrestricted)",  # bounded: an open-ended .* was quadratic
 ]
 SOFT_JAILBREAK_PATTERNS = [
     r"role-?\s?play(ing)?\s+(game|as)\b",

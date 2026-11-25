@@ -64,7 +64,7 @@ def test_summary_counts_errors_refusals_tokens_and_cost_per_question():
     q = s["questions"]
     assert q["count"] == 5 and q["answered"] == 2 and q["refused"] == 1 and q["refusal_reasons"] == {"not_in_documents": 1}
     assert q["latency_ms"]["count"] == 3 and q["latency_ms"]["p50"] == 2000.0     # only HTTP 200 questions
-    assert s["tokens"]["input"] == 100 * 3 + 20 and s["tokens"]["per_question"] == round((320 + 150) / 3, 1)  # all spent, per answered question
+    assert s["tokens"]["input"] == 100 * 3 + 20 and s["tokens"]["per_question"] == round((320 + 150) / 3, 1)  # all spent, per question served (HTTP 200)
     assert s["cost"]["total_usd"] == pytest.approx(0.001 * 3 + 0.0005) and s["cost"]["estimate"] is True
     assert s["cost"]["per_question_usd"] == pytest.approx((0.001 * 3 + 0.0005) / 3, abs=1e-6)
     assert [x["name"] for x in s["steps"]["ask"]] == ["embed", "answer"]            # in the order they happen

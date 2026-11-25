@@ -191,6 +191,8 @@ class Telemetry:
                 "attrs": json.dumps({k: v for k, v in a.items() if k not in ("owner_id",)}, ensure_ascii=False),
             })
         ra = dict(root.attributes or {})
+        if ra.get("owner_id") is None:  # an unauthenticated request: nobody can see it, so it is not stored
+            return
         status = int(ra.get("status", 0))
         cost = (tokens_in * self.s.llm_price_in_per_m + tokens_out * self.s.llm_price_out_per_m
                 + embed_est * self.s.embed_price_per_m) / 1_000_000

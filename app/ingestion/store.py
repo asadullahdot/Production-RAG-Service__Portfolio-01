@@ -93,7 +93,8 @@ class QdrantStore:
                                                  location=":memory:" if self.s.qdrant_path == ":memory:" else None)
             else:
                 if not self.s.qdrant_url:
-                    raise UpstreamUnavailable("Qdrant is not configured (missing QDRANT_URL).")
+                    logging.getLogger("rag.store").error("Qdrant is not configured (missing QDRANT_URL)")  # the client only gets the generic 503
+                    raise UpstreamUnavailable()
                 self._client = AsyncQdrantClient(url=self.s.qdrant_url, api_key=self.s.qdrant_api_key or None,
                                                  timeout=max(1, math.ceil(self.s.qdrant_timeout_s)), prefer_grpc=False)
         return self._client

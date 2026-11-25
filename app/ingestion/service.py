@@ -85,7 +85,7 @@ class IngestionService:
 
         flagged = False
         for section in extracted.sections:  # B6: flag instruction-like text; it stays data
-            hits = guardrails.scan_document_text(section.page_content)
+            hits = await run_in_threadpool(guardrails.scan_document_text, section.page_content)  # regex work stays off the event loop
             if hits:
                 flagged = True
                 log_event(logger, "document contains instruction-like text (kept as data)", logging.WARNING,

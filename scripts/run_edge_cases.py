@@ -253,6 +253,9 @@ def cleanup() -> None:
 def write_results() -> int:
     passed = sum(r["pass"] for r in RESULTS)
     print(f"\n{passed}/{len(RESULTS)} edge cases passed")
+    if not RESULTS:  # an aborted run (for example the server did not start) must not overwrite the saved evidence
+        print("no case ran; the saved evals/results/b7_edge_cases.json is left as it was")
+        return 0
     (ROOT / "evals" / "results" / "b7_edge_cases.json").write_text(json.dumps(
         {"date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "passed": passed, "total": len(RESULTS), "cases": RESULTS},
         indent=1, ensure_ascii=False), encoding="utf-8")
