@@ -44,10 +44,7 @@ def reset_owner(ct, owner: str) -> None:
 
 
 def sample_document() -> tuple[str, bytes]:
-    """First PDF/DOCX in corpus/ if present, else a small generated PDF."""
-    for p in sorted((ROOT / "corpus").glob("*")):
-        if p.suffix.lower() in {".pdf", ".docx"}:
-            return p.name, p.read_bytes()
+    """A small generated policy PDF. The notebook questions are about it, and it carries no personal data."""
     from tests.make_files import make_pdf
     pages = [
         "Refund policy. Returns are accepted within thirty days of purchase with a valid receipt. Items must be unused.",
