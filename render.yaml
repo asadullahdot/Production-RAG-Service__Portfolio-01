@@ -1,0 +1,42 @@
+# Render Blueprint: deploys KNOWLEX as one free web service. Docs: https://render.com/docs/blueprint-spec
+# How to use it: README.md, section "Deploying on Render (free tier)".
+#
+# The frontend needs no build step on Render: the React build is committed in app/static/ and FastAPI serves it.
+# Secrets are NOT in this file. The three marked `sync: false` are asked for in the Render dashboard when the Blueprint is created.
+services:
+  - type: web
+    name: knowlex
+    runtime: python
+    plan: free
+    region: frankfurt          # closest Render region to the Qdrant Cloud cluster (AWS eu-west-2, London)
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    # One worker on purpose: the rate limiter, the locks and the SQLite registry live in this one process (PLAN.md section 3).
+    # Render tells the service which port to listen on through $PORT and needs it bound to 0.0.0.0.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    # "/" serves the static page and never depends on Qdrant, so a short Qdrant outage does not make Render restart the service.
+    # (/health reports Qdrant too and returns 503 when it is down: point an uptime monitor at that one instead.)
+    healthCheckPath: /
+    envVars:
+      - key: ENV
+        value: production              # also refuses DEMO_FAULT
+      - key: AUTH_ENABLED
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true            # Render makes a random 256-bit value once and keeps it across deploys
+      - key: BEHIND_PROXY
+        value: "true"                  # read the client IP from X-Forwarded-For (only used for the login and signup rate limit)
+      - key: TRUSTED_PROXIES
+        value: "1"                     # take the rightmost entry: the one Render's own proxy added, which a client cannot forge
+      - key: QDRANT_COLLECTION
+        value: rag_chunks_render       # its own collection, separate from the development one
+      - key: SIGNUP_ENABLED
+        value: "true"
+      - key: MAX_USERS
+        value: "20"                    # signup stops after 20 accounts, to protect the OpenAI credit
+      - key: OPENAI_API_KEY
+        sync: false                    # asked for in the dashboard; never commit it
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
