@@ -119,3 +119,24 @@ describe("trace view helpers", () => {
     expect(spanDetail({})).toBe("");
   });
 });
+
+import { formatResetTime, isFull, limitText } from "./lib.js";
+
+describe("per-user limits", () => {
+  it("knows when a limit is reached and treats 0 as no limit", () => {
+    expect(isFull({ used: 10, limit: 10 })).toBe(true);
+    expect(isFull({ used: 9, limit: 10 })).toBe(false);
+    expect(isFull({ used: 999999, limit: 0 })).toBe(false);
+    expect(isFull(null)).toBe(false);
+  });
+  it("writes the use against the limit", () => {
+    expect(limitText({ used: 3, limit: 10 })).toBe("3 of 10");
+    expect(limitText({ used: 12340, limit: 100000 })).toBe("12,340 of 100,000");
+    expect(limitText({ used: 4, limit: 0 })).toBe("4");
+    expect(limitText(undefined)).toBe("");
+  });
+  it("falls back to UTC midnight when the reset time is unreadable", () => {
+    expect(formatResetTime("not a date")).toBe("00:00 UTC");
+  });
+});
+

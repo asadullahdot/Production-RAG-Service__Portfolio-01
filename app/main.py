@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import auth, metrics, telemetry
+from app.db import next_utc_midnight
 from app.config import Settings, get_settings
 from app.container import Container, build_container
 from app.errors import AppError, NotFound, RateLimited, UpstreamUnavailable
@@ -27,7 +28,7 @@ from app.llm_guard import deadline_var
 from app.ratelimit import rate_key
 from app.upload_limit import UploadSizeLimit
 from app.schemas import (AskRequest, AskResponse, DocumentList, DocumentOut, ErrorResponse, HealthOut, MetricsSummary,
-                         RequestItem, RequestList, SignupRequest, SpanOut, TokenOut, TraceOut, UserOut)
+                         RequestItem, RequestList, SignupRequest, SpanOut, TokenOut, TraceOut, UsageLimit, UsageOut, UserOut)
 
 logger = logging.getLogger("rag.api")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -141,6 +142,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         if exc.status_code >= 500:
             logger.error("application error: %s", exc.code)
         headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+        if exc.details and "retry_after_s" in exc.details:  # the daily token limit: tell the client when to try again
+            headers = {"Retry-After": str(exc.details["retry_after_s"])}
         request.state.error_code = exc.code
         return _error(request_id_var.get(), exc.status_code, exc.code, exc.message, exc.details, headers)
 
@@ -249,6 +252,19 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         row, spans = found
         return TraceOut(request=RequestItem(**metrics.request_item(row)),
                         spans=[SpanOut(**{**s, "attrs": json.loads(s["attrs"])}) for s in spans])
+
+    @app.get("/usage", response_model=UsageOut, tags=["account"], responses=ERRORS,
+             summary="Your documents, chunks and tokens used today, against your limits",
+             description="A limit of 0 means no limit. Tokens are the model tokens of your questions (screen and answer) in the current UTC day.")
+    async def usage(request: Request, owner_id: str = Depends(owner)):
+        # Read-only view of the limits for the UI; the limits themselves are enforced where the work happens (upload and ask).
+        c: Container = request.app.state.container
+        docs, chunks = await run_in_threadpool(c.db.usage_counts, owner_id)
+        tokens = await run_in_threadpool(c.db.tokens_today, owner_id)
+        s = c.settings
+        return UsageOut(documents=UsageLimit(used=docs, limit=s.max_docs_per_user), chunks=UsageLimit(used=chunks, limit=s.max_chunks_per_user),
+                        tokens_today=UsageLimit(used=tokens, limit=s.daily_token_limit_per_user),
+                        tokens_reset_at=next_utc_midnight().isoformat(timespec="seconds"))
 
     @app.get("/health", response_model=HealthOut, tags=["system"], summary="Liveness and dependency check",
              responses={503: {"model": HealthOut}})

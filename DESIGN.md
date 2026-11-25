@@ -108,7 +108,7 @@ All model calls go through `llm_guard.py`: LangChain models built with `max_retr
 
 ## 9. Testing
 
-Offline, about 40 s: **313 tests** at the last run. Embeddings are a deterministic hashed bag-of-words (similar words give similar vectors), the chat model is scripted, and Qdrant runs in its embedded in-memory mode, so the whole API runs without network. Coverage: every route and status code, upload/list/ask/delete/re-ask, every guardrail pattern and the false-positive cases, retry/deadline/`Retry-After`/quota behaviour, concurrent identical uploads (one document stored), stale vectors never surfacing, size limits while streaming, and a regression test for each defect found in the seven code-review rounds and in manual testing. The notebooks (`notebooks/01`-`05`) were executed against the real services. These tests cannot judge answer quality; the evaluation does.
+Offline, about 40 s: **326 tests** at the last run. Embeddings are a deterministic hashed bag-of-words (similar words give similar vectors), the chat model is scripted, and Qdrant runs in its embedded in-memory mode, so the whole API runs without network. Coverage: every route and status code, upload/list/ask/delete/re-ask, every guardrail pattern and the false-positive cases, retry/deadline/`Retry-After`/quota behaviour, concurrent identical uploads (one document stored), stale vectors never surfacing, size limits while streaming, and a regression test for each defect found in the seven code-review rounds and in manual testing. The notebooks (`notebooks/01`-`05`) were executed against the real services. These tests cannot judge answer quality; the evaluation does.
 
 ## 10. Data privacy
 
@@ -139,4 +139,18 @@ The choice of embedding model, vector database and generator were justified by v
 **Measured (25 Nov 2026, real OpenAI and Qdrant, 29 questions in one session).** Latency p50 4.4 s and p95 8.1 s; model screen 2.0 s and answer 2.2 s are the two big steps, embedding 0.3 s, vector search 0.15 s; 1,161 tokens and about $0.000125 per question served (HTTP 200, answered or refused). The 28.6% error rate in that session came from failures injected on purpose (`DEMO_FAULT`) to show them on the dashboard; it is not a service error rate. One short session is not a load test.
 
 **Limits.** There is no reranking step in this pipeline, so none is traced. Prices are copied from the vendor pages on the date above and will drift. Traces live in the same SQLite file as the registry, so on a host with an ephemeral disk they are lost with it (the same catch as the registry, section 10 of PLAN.md).
+
+## 15. Per-user limits
+
+**What.** Each user may keep **10 documents** and **5,000 chunks** stored and may spend **100,000 model tokens per UTC day**. The defaults are in `app/config.py` and can be changed in `.env` (`MAX_DOCS_PER_USER`, `MAX_CHUNKS_PER_USER`, `DAILY_TOKEN_LIMIT_PER_USER`); **0 switches a limit off**. `GET /usage` returns the use against the limits, and the UI shows it (documents and chunks in the Documents pane, tokens today in the chat footer) and disables the upload button or the message box when a limit is reached.
+
+**Why.** Signup is open and every upload is embedded and every question is answered with the owner's OpenAI key, so without a per-user bound one account could spend the credit that the rate limit alone does not protect (20 requests a minute, 1,500 chunks a document, indefinitely). The limits are the second line after the signup cap (`MAX_USERS`) and the OpenAI spending limit the owner sets on the account.
+
+**Where each is enforced.**
+- *Documents and chunks:* counted from the SQLite registry, the source of truth. `IngestionService` checks after the duplicate check (re-uploading a file you already have is a 409, not a limit error) and, for chunks, after chunking but before any embedding is paid for. `Database.add_document` checks again under the database lock, so two uploads that both passed the early check cannot both be stored; the existing cleanup removes the vectors if that last check refuses. Result: 403 `quota_exceeded` with the limit and the use in `details`.
+- *Tokens:* `AskService.ask` compares today's count with the limit before any model call and refuses with 429 `token_quota_exceeded` (a `Retry-After` header and the reset time in `details`). After the pipeline, in a `finally`, the tokens it spent (screen, recheck and answer calls) are added to the user's count in the `token_usage` table, also when the question was refused or failed later. The table is separate from the B3 traces, which are pruned and can be switched off.
+
+**What it does not do.** The token count is checked at the start of a request, so one question can take the total slightly past the limit (a live check with a limit of 2,500 ended at 2,982): it protects the credit, it is not an exact meter. Embedding tokens are not counted (the wrapper does not report them; they are under 1% of the cost). The count restarts at 00:00 UTC for everyone, not 24 hours after each user's first request. The limits are per user, not per deployment, so many accounts still add up (`MAX_USERS` bounds that).
+
+**Checked.** 13 tests in `tests/test_quotas.py` (each limit, per user, 0 = off, duplicates at the limit, the atomic check, no model call for a refused question, the next UTC day, `GET /usage`). A live run against OpenAI and Qdrant Cloud with limits of 1 document and 2,500 tokens: the second upload gave 403, the third question gave 429 with `Retry-After` and the UI showed both limits.
 

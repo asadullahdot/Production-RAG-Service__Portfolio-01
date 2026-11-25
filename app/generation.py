@@ -6,6 +6,7 @@ import asyncio
 import re
 import unicodedata
 import time
+from datetime import datetime, timezone
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -13,8 +14,8 @@ from app import guardrails
 from app import telemetry as tel
 from app.config import (BLOCKED_TEXT, INJECTION_REFUSAL_TEXT, NOT_IN_DOCUMENTS, PROMPT_CANARY,
                         REFUSAL_TEXT, Settings)
-from app.db import Database
-from app.errors import NotFound, UpstreamUnavailable
+from app.db import Database, next_utc_midnight
+from app.errors import NotFound, TokenQuotaExceeded, UpstreamUnavailable
 from app.ingestion.embedding import Embedder
 from app.ingestion.store import VectorStore
 from app.logging_setup import log_event, request_id_var
@@ -152,9 +153,36 @@ class AskService:
                            num_retrieved=len(chunks), usage=usage)
 
     async def ask(self, owner_id: str, req: AskRequest) -> AskResponse:
+        """Answer a question. Wraps the pipeline (``_ask``) with the daily token limit: it is checked before any model call, and
+        the tokens the pipeline spent are added to the owner's count afterwards."""
+        usage = Usage()  # filled in by every model call of the pipeline (screen, recheck, answer)
+        try:
+            await self._check_token_limit(owner_id)
+            return await self._ask(owner_id, req, usage)
+        finally:
+            # Recorded even when a later step failed or the question was refused: the tokens were spent either way, and counting
+            # only successful answers would let failing requests spend without limit. A request that spent nothing adds nothing.
+            if usage.input_tokens or usage.output_tokens:
+                self.db.add_usage(owner_id, usage.input_tokens, usage.output_tokens)
+
+    async def _check_token_limit(self, owner_id: str) -> None:
+        """Refuse (429) when the owner has already used today's allowance. The count is only compared at the start of a request, so
+        one question can take the total slightly past the limit; the limit protects the credit, it is not an exact meter."""
+        limit = self.s.daily_token_limit_per_user
+        if not limit:  # 0 = no limit
+            return
+        used = await run_in_threadpool(self.db.tokens_today, owner_id)
+        if used >= limit:
+            reset = next_utc_midnight()
+            wait = max(1, int((reset - datetime.now(timezone.utc)).total_seconds()))
+            raise TokenQuotaExceeded(
+                f"You have used your {limit:,} tokens for today ({used:,}). The count starts again at 00:00 UTC.",
+                {"kind": "tokens", "limit": limit, "used": used, "resets_at": reset.isoformat(timespec="seconds"), "retry_after_s": wait})
+
+    async def _ask(self, owner_id: str, req: AskRequest, usage: Usage) -> AskResponse:
+        """The ask pipeline (PLAN.md section 8.2). Model calls add their tokens to ``usage``."""
         started = time.monotonic()
         question = guardrails.check_question(req.question, self.s)
-        usage = Usage()
 
         released = False  # True when the model recheck already judged this question harmless
         with tel.span("input_guardrails"):

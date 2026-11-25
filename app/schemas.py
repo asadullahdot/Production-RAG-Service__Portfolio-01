@@ -206,3 +206,17 @@ class SpanOut(BaseModel):
 class TraceOut(BaseModel):
     request: RequestItem
     spans: list[SpanOut]
+
+
+# ---- per-user limits
+class UsageLimit(BaseModel):
+    used: int
+    limit: int  # 0 = no limit
+
+
+class UsageOut(BaseModel):
+    documents: UsageLimit
+    chunks: UsageLimit
+    tokens_today: UsageLimit
+    tokens_reset_at: str  # when the daily token count starts again (00:00 UTC)
+

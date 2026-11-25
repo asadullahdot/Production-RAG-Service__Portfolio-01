@@ -117,18 +117,26 @@ function Workspace({ token, fileTypes, notify }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [excluded, setExcluded] = useState(() => new Set());  // documents the user switched off for questions
+  // How much of the per-user limits (documents, chunks, daily tokens) is used, from GET /usage. Refreshed after every upload, delete
+  // and question. The UI only reflects it (disabled controls, hints); the server enforces the limits.
+  const [usage, setUsage] = useState(null);
+
+  const loadUsage = useCallback(async () => {
+    try { setUsage(await api("/usage", { token })); } catch { /* the limits are only a convenience in the UI; the server enforces them */ }
+  }, [token]);
 
   const loadDocs = useCallback(async () => {
     try {
       const data = await api("/documents", { token });
       setDocs(data.documents);
       setExcluded((old) => new Set([...old].filter((id) => data.documents.some((d) => d.doc_id === id))));
+      loadUsage();
     } catch (e) {
       notify("error", e.message);
     } finally {
       setLoading(false);
     }
-  }, [token, notify]);
+  }, [token, notify, loadUsage]);
   useEffect(() => { loadDocs(); }, [loadDocs]);
 
   const toggle = (id) => setExcluded((old) => { const s = new Set(old); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -149,8 +157,8 @@ function Workspace({ token, fileTypes, notify }) {
       </div>
       {/* Chat stays mounted (hidden) while Monitoring is open, so the conversation is not lost. */}
       <div className={view === "chat" ? "grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[22rem_minmax(0,1fr)] md:items-start" : "hidden"}>
-        <Documents docs={docs} loading={loading} fileTypes={fileTypes} token={token} excluded={excluded} onToggle={toggle} onChanged={loadDocs} notify={notify} />
-        <Chat docs={docs} loading={loading} excluded={excluded} token={token} onOpenTrace={openTrace} />
+        <Documents usage={usage} docs={docs} loading={loading} fileTypes={fileTypes} token={token} excluded={excluded} onToggle={toggle} onChanged={loadDocs} notify={notify} />
+        <Chat usage={usage} onAnswered={loadUsage} docs={docs} loading={loading} excluded={excluded} token={token} onOpenTrace={openTrace} />
       </div>
       {view === "monitoring" && <Monitoring token={token} initialTrace={traceRequest} onGoChat={() => setView("chat")} />}
     </>

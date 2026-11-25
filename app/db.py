@@ -8,8 +8,10 @@ from __future__ import annotations
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from app.errors import QuotaExceeded
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -25,6 +27,15 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_owner_hash ON documents(owner_id, file_hash);
 CREATE INDEX IF NOT EXISTS ix_documents_owner ON documents(owner_id);
+-- Model tokens spent per user and UTC day, for the daily limit. A table of its own (not the B3 traces): traces are pruned and can
+-- be switched off, a limit must not depend on them.
+CREATE TABLE IF NOT EXISTS token_usage (
+    owner_id      TEXT NOT NULL,
+    day           TEXT NOT NULL,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (owner_id, day)
+);
 CREATE TABLE IF NOT EXISTS requests (
     request_id       TEXT PRIMARY KEY,
     ts               TEXT NOT NULL,
@@ -67,6 +78,16 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def utc_day() -> str:
+    """The current day in UTC, the key of the daily token count (tests replace this function to simulate the next day)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def next_utc_midnight() -> datetime:
+    """When the daily token count starts again."""
+    return (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 class Database:
     def __init__(self, path: str, timeout_s: float = 10.0):
         if path != ":memory:":
@@ -107,15 +128,46 @@ class Database:
     # ---- documents registry
     def add_document(self, *, doc_id: str, owner_id: str, file_name: str, file_type: str,
                      num_pages: int, num_chunks: int, file_hash: str, uploaded_at: str | None = None,
-                     flagged: bool = False) -> dict:
+                     flagged: bool = False, max_docs: int = 0, max_chunks: int = 0) -> dict:
+        """Insert a registry row. ``max_docs`` / ``max_chunks`` are the owner's limits (0 = none); raises QuotaExceeded if this
+        document would exceed one of them."""
         uploaded_at = uploaded_at or now_iso()
-        self._run(
-            "INSERT INTO documents (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at, flagged)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at, int(flagged)),
-            write=True,
-        )
+        with self._lock:
+            # The final, atomic check of the per-user limits. IngestionService also checks early (so nothing is embedded for a
+            # document that cannot be kept), but two uploads can pass that early check at the same moment. Counting and inserting
+            # under the same lock means they cannot both be stored. The caller deletes the document's vectors when this raises.
+            docs, chunks = self.usage_counts(owner_id)
+            if max_docs and docs >= max_docs:
+                raise QuotaExceeded(f"You have reached the limit of {max_docs} document{'' if max_docs == 1 else 's'}. Delete one to upload another.",
+                                    {"kind": "documents", "limit": max_docs, "used": docs})
+            if max_chunks and chunks + num_chunks > max_chunks:
+                raise QuotaExceeded(f"This document would take you over your limit of {max_chunks:,} chunks ({chunks:,} used). Delete a document first.",
+                                    {"kind": "chunks", "limit": max_chunks, "used": chunks})
+            self._run(
+                "INSERT INTO documents (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at, flagged)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (doc_id, owner_id, file_name, file_type, num_pages, num_chunks, file_hash, uploaded_at, int(flagged)),
+                write=True,
+            )
         return self.get_document(owner_id, doc_id)  # type: ignore[return-value]
+
+    def usage_counts(self, owner_id: str) -> tuple[int, int]:
+        """(documents, chunks) the owner has stored: what the storage limits are measured against."""
+        row = self._run("SELECT COUNT(*) AS n, COALESCE(SUM(num_chunks), 0) AS c FROM documents WHERE owner_id=?", (owner_id,))[0]
+        return int(row["n"]), int(row["c"])
+
+    # ---- token usage per UTC day (for the daily limit)
+    def add_usage(self, owner_id: str, input_tokens: int, output_tokens: int) -> None:
+        """Add tokens to the owner's count for today (one row per owner and day, created on first use)."""
+        self._run("INSERT INTO token_usage (owner_id, day, input_tokens, output_tokens) VALUES (?,?,?,?) "
+                  "ON CONFLICT(owner_id, day) DO UPDATE SET input_tokens = input_tokens + excluded.input_tokens, "
+                  "output_tokens = output_tokens + excluded.output_tokens",
+                  (owner_id, utc_day(), input_tokens, output_tokens), write=True)
+
+    def tokens_today(self, owner_id: str) -> int:
+        """Input + output tokens the owner has spent since 00:00 UTC (0 if none)."""
+        rows = self._run("SELECT input_tokens + output_tokens AS t FROM token_usage WHERE owner_id=? AND day=?", (owner_id, utc_day()))
+        return int(rows[0]["t"]) if rows else 0
 
     def get_document(self, owner_id: str, doc_id: str) -> dict | None:
         rows = self._run("SELECT * FROM documents WHERE owner_id=? AND doc_id=?", (owner_id, doc_id))

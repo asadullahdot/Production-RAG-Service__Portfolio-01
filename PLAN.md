@@ -1,7 +1,7 @@
 # PLAN.md — Production RAG Service (single master plan)
 
 > **Who this is for:** an AI coding model or engineer who will build the project. This is the **only** plan document. Rewritten 24 Nov 2026 to be shorter and simpler; the previous long version is kept in `_archive/PLAN_before_rewrite_2026-11-24.md` (not committed).
-> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 313 offline tests at the last count (25 Nov 2026) pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
+> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 326 offline tests at the last count (25 Nov 2026) pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
 > **Brief and rubric:** `_requirements/`. **Diagram:** [architecture.html](architecture.html) (PLAN.md wins on any conflict).
 > **Deadline:** Wednesday 25 Nov 2026. Measured evaluation numbers are mandatory (rubric M7 = 0 gives grade F).
 
@@ -196,6 +196,7 @@ Run: `uvicorn app.main:app`. Evals call the services directly with internal owne
 | Secrets | `OPENAI_API_KEY`, `QDRANT_API_KEY`, `JWT_SECRET` | never logged. `JWT_SECRET` ≥ 32 random chars, checked at startup when auth is on |
 | Mode | `INPUT_SCREEN` (true), `INPUT_RECHECK` (true), `SCREEN_REASONING_EFFORT` (none: a yes/no classifier needs no reasoning, ~2 s instead of 10-14 s at `low`, measured 24 Nov 2026), `AUTH_ENABLED` (true since B1 was built), `DEFAULT_OWNER_ID` (local), `ENV` (dev \| production), `BEHIND_PROXY` (false) | production forbids `DEMO_FAULT` and hides stack details; `BEHIND_PROXY` reads `X-Forwarded-For` for the limiter |
 | Signup | `SIGNUP_ENABLED` (true), `MAX_USERS` (50) | protects the owner's credit on a public deploy (403 `signup_closed`) |
+| Per-user limits | `MAX_DOCS_PER_USER` (10), `MAX_CHUNKS_PER_USER` (5000), `DAILY_TOKEN_LIMIT_PER_USER` (100000); **0 switches a limit off** | protect the owner's credit on a public deploy. Documents and chunks are counted from the registry (403 `quota_exceeded`); tokens are the model tokens (screen, recheck, answer) of the current UTC day (429 `token_quota_exceeded` with `Retry-After`). Embedding tokens are not counted |
 | Models | `LLM_MODEL` gpt-6-luna, `JUDGE_MODEL` gpt-6.1-terra, `EMBEDDING_MODEL` text-embedding-3-small, `EMBEDDING_DIM` 1536 | |
 | Generation | `LLM_REASONING_EFFORT` (low), `LLM_MAX_OUTPUT_TOKENS` (4000), `JUDGE_REASONING_EFFORT` (medium) | reasoning tokens count toward the cap; if a response is `incomplete`, retry once with double the cap, then 503. **`temperature` is NOT supported: both models return HTTP 400 "Unsupported parameter: 'temperature'" [VERIFIED 24 Nov: live call]. Never send it; there is no temperature setting.** Determinism comes from fixed reasoning effort plus the disk cache |
 | Qdrant | `QDRANT_URL`, `QDRANT_PATH` (embedded mode, tests only), `QDRANT_COLLECTION` (rag_chunks), `QDRANT_TIMEOUT_S` (15), `QDRANT_UPSERT_BATCH` (100) | `QDRANT_PATH` wins when set. Use REST, not gRPC (Hugging Face blocks other ports) |
@@ -229,6 +230,7 @@ Run: `uvicorn app.main:app`. Evals call the services directly with internal owne
 | `GET /metrics/summary?window=1h\|24h\|7d\|all` | JWT* | B3: latency p50/p95, error rate, refusals, tokens, estimated cost, per-step latency and requests over time, for **your own** requests | 200 `MetricsSummary` | 401 · 422 |
 | `GET /metrics/requests?limit=50` | JWT* | B3: your most recent traced requests | 200 `RequestList` | 401 |
 | `GET /metrics/requests/{request_id}` | JWT* | B3: one trace, every step with start offset and duration | 200 `TraceOut` | 401 · 404 (also for someone else's request) |
+| `GET /usage` | JWT* | your documents, chunks and tokens used today against your limits (a limit of 0 = none), and when the token count restarts | 200 `UsageOut` | 401 |
 | `GET /health` | no | SQLite checked each call; Qdrant reachability cached ~60 s; returns `auth_enabled` | 200 | 503 |
 | `GET /` | no | frontend | 200 | – |
 
@@ -244,7 +246,7 @@ Swagger (`/docs`) needs a description and example bodies on every route, and a w
 - `RetrievedChunk`: `n` (1-based, matches the citation), `chunk_id`, `doc_id`, `file_name`, `page`, `chunk_idx`, `text`, `score` (similarity 0..1). The UI calls `page` "section" for DOCX/MD and "slide" for PPTX.
 - `Citation`: `n`, `doc_id`, `file_name`, `page`.
 - `AskResponse`: `answer`, `citations`, `retrieved_chunks`, `num_retrieved`, `refused`, `reason` (null, `no_documents`, `no_relevant_context`, `not_in_documents`, `prompt_injection`, `jailbreak`, `output_blocked`), `request_id`, `latency_ms`, `usage` (`input_tokens`, `output_tokens`).
-- **One error shape everywhere, including 422:** `{"error": {"code", "message", "request_id", "details"?}}`. Codes: `empty_file`, `no_text`, `corrupt_file`, `encrypted_file`, `malicious_file`, `duplicate_document`, `file_too_large`, `unsupported_type`, `invalid_request`, `unauthorized`, `email_taken`, `signup_closed`, `not_found`, `rate_limited`, `upstream_unavailable`, `internal_error`.
+- **One error shape everywhere, including 422:** `{"error": {"code", "message", "request_id", "details"?}}`. Codes: `empty_file`, `no_text`, `corrupt_file`, `encrypted_file`, `malicious_file`, `duplicate_document`, `file_too_large`, `unsupported_type`, `invalid_request`, `unauthorized`, `email_taken`, `signup_closed`, `quota_exceeded` (403, a document or chunk limit), `token_quota_exceeded` (429, the daily token limit), `not_found`, `rate_limited`, `upstream_unavailable`, `internal_error`.
 - Every response carries `X-Request-ID` (generated if absent).
 
 ### 7.3 Behaviour decisions
@@ -539,7 +541,7 @@ Method: a throw-away virtual environment outside the repo, a fake embedder, Qdra
 | 9 | Hugging Face: paid plan needed, ephemeral disk, blocked ports, sleep | §16: confirm the account, accept a registry reset, use REST on 443, fall back to another host |
 | 10 | Qdrant free cluster suspends after a week idle | Fine for a 25 Nov deadline; reactivate in the console if it sleeps |
 | 11 | Two stores (Qdrant + SQLite) can drift | Registry row last; cleanup by filter; `/ask` drops hits not in the registry |
-| 12 | A public deploy lets strangers spend the owner's credit | `SIGNUP_ENABLED`/`MAX_USERS`, per-user rate limit, upload caps, `REQUEST_DEADLINE_S`; set an OpenAI spending limit **[OWNER]** |
+| 12 | A public deploy lets strangers spend the owner's credit | `SIGNUP_ENABLED`/`MAX_USERS`, per-user rate limit, upload caps, **per-user limits on documents, chunks and daily tokens (built 25 Nov 2026)**, `REQUEST_DEADLINE_S`; set an OpenAI spending limit **[OWNER]** |
 | 13 | The framework hides failure behaviour the brief grades | `llm_guard.py` stays our own code with `max_retries=0`; tests assert retry count, `Retry-After`, quota fail-fast and that no model is called outside the guard |
 | 14 | More to explain in the video | The pipeline is plain async code; the §4.5 table is the walkthrough script |
 | 15 | Judge is the same vendor family; labels written by the author; ~30 questions | Different larger judge, hand-labelled reliability sample with kappa and CI, limitations in EVAL.md |
