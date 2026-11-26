@@ -199,3 +199,21 @@ def test_multi_document_doc_ids_filter(client):
     upload(client, make_pdf(["alpha dogs bark loudly all night long in the dark yard beside the old barn"]), "b.pdf")
     body = client.post("/ask", json={"question": "alpha loudly", "doc_ids": [a["doc_id"]]}).json()
     assert {c["file_name"] for c in body["retrieved_chunks"]} == {"a.pdf"}
+
+
+def test_head_requests_work_on_health_and_the_home_page(env):
+    """Uptime monitors check with HEAD (UptimeRobot's free plan does); a GET-only route answered 405 and showed the live site as down."""
+    for path in ("/health", "/"):
+        r = env.client.head(path)
+        assert r.status_code == 200, path
+    env.vector_db_down(True)
+    assert env.client.head("/health").status_code in (200, 503)  # the vector database check is cached for a moment
+    assert env.client.head("/documents").status_code == 405       # only the two public pages accept HEAD
+
+
+def test_head_on_health_reports_a_degraded_service(tmp_path):
+    from tests.conftest import Env
+    e = Env(tmp_path)
+    e.vector_db_down(True)  # down before the first check, so nothing is cached
+    assert e.client.head("/health").status_code == 503
+    assert e.client.head("/").status_code == 200                  # the page itself does not depend on the vector database
