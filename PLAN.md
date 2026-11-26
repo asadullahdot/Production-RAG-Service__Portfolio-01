@@ -1,7 +1,7 @@
 # PLAN.md — Production RAG Service (single master plan)
 
 > **Who this is for:** an AI coding model or engineer who will build the project. This is the **only** plan document. Rewritten 24 Nov 2026 to be shorter and simpler; the previous long version is kept in `_archive/PLAN_before_rewrite_2026-11-24.md` (not committed).
-> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 326 offline tests at the last count (25 Nov 2026) pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
+> **Status (24 Nov 2026):** the migration to LangChain (no LangGraph) + Qdrant is **done on branch `feature/langchain-qdrant`** (rollback tag `pre-langchain` = the Pinecone version): 328 offline tests at the last count (25 Nov 2026) pass, and a live upload / duplicate / ask / refuse / injection / delete run passed against OpenAI and Qdrant Cloud. Deliberate deviation: the vector store uses `qdrant-client` directly, not `langchain-qdrant` (see §3). Still to do: corpus, golden set, real eval numbers, DESIGN/EVAL/AI_USAGE, video, optional features.
 > **Brief and rubric:** `_requirements/`. **Diagram:** [architecture.html](architecture.html) (PLAN.md wins on any conflict).
 > **Deadline:** Wednesday 25 Nov 2026. Measured evaluation numbers are mandatory (rubric M7 = 0 gives grade F).
 
@@ -231,7 +231,7 @@ Run: `uvicorn app.main:app`. Evals call the services directly with internal owne
 | `GET /metrics/requests?limit=50` | JWT* | B3: your most recent traced requests | 200 `RequestList` | 401 |
 | `GET /metrics/requests/{request_id}` | JWT* | B3: one trace, every step with start offset and duration | 200 `TraceOut` | 401 · 404 (also for someone else's request) |
 | `GET /usage` | JWT* | your documents, chunks and tokens used today against your limits (a limit of 0 = none), and when the token count restarts | 200 `UsageOut` | 401 |
-| `GET /health` | no | SQLite checked each call; Qdrant reachability cached ~60 s; returns `auth_enabled` | 200 | 503 |
+| `GET /health` (also `HEAD`, for uptime monitors) | no | SQLite checked each call; Qdrant reachability cached ~60 s; returns `auth_enabled` | 200 | 503 |
 | `GET /` | no | frontend | 200 | – |
 
 \*JWT is required only when `AUTH_ENABLED=true`. 413 is not in the brief's list; it is documented as an extra.

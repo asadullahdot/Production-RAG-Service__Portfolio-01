@@ -108,7 +108,7 @@ All model calls go through `llm_guard.py`: LangChain models built with `max_retr
 
 ## 9. Testing
 
-Offline, about 40 s: **326 tests** at the last run. Embeddings are a deterministic hashed bag-of-words (similar words give similar vectors), the chat model is scripted, and Qdrant runs in its embedded in-memory mode, so the whole API runs without network. Coverage: every route and status code, upload/list/ask/delete/re-ask, every guardrail pattern and the false-positive cases, retry/deadline/`Retry-After`/quota behaviour, concurrent identical uploads (one document stored), stale vectors never surfacing, size limits while streaming, and a regression test for each defect found in the seven code-review rounds and in manual testing. The notebooks (`notebooks/01`-`05`) were executed against the real services. These tests cannot judge answer quality; the evaluation does.
+Offline, about 40 s: **328 tests** at the last run. Embeddings are a deterministic hashed bag-of-words (similar words give similar vectors), the chat model is scripted, and Qdrant runs in its embedded in-memory mode, so the whole API runs without network. Coverage: every route and status code, upload/list/ask/delete/re-ask, every guardrail pattern and the false-positive cases, retry/deadline/`Retry-After`/quota behaviour, concurrent identical uploads (one document stored), stale vectors never surfacing, size limits while streaming, and a regression test for each defect found in the seven code-review rounds and in manual testing. The notebooks (`notebooks/01`-`05`) were executed against the real services. These tests cannot judge answer quality; the evaluation does.
 
 ## 10. Data privacy
 

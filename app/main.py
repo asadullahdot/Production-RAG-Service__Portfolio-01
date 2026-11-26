@@ -266,6 +266,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                         tokens_today=UsageLimit(used=tokens, limit=s.daily_token_limit_per_user),
                         tokens_reset_at=next_utc_midnight().isoformat(timespec="seconds"))
 
+    # HEAD as well as GET: uptime monitors (UptimeRobot's free plan, for one) check with HEAD, and a GET-only route answers
+    # that with 405, which they report as "down". The HEAD answer has the same status (200, or 503 when degraded) and no body.
+    @app.head("/health", include_in_schema=False)
     @app.get("/health", response_model=HealthOut, tags=["system"], summary="Liveness and dependency check",
              responses={503: {"model": HealthOut}})
     async def health(request: Request):
@@ -277,6 +280,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                          auth_enabled=c.settings.auth_enabled, file_types=sorted(c.ingestion.allowed_types))
         return JSONResponse(body.model_dump(), status_code=200 if ok else 503)
 
+    @app.head("/", include_in_schema=False)  # some monitors and link checkers use HEAD on the home page
     @app.get("/", include_in_schema=False)
     async def index():
         return FileResponse(STATIC_DIR / "index.html")
